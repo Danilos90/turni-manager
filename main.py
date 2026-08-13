@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import sqlite3
 import calendar
+from typing import List
 
 from solver import generate_weeks_schedule
 
@@ -28,7 +29,6 @@ def init_db():
             iso_week INTEGER
         )
     ''')
-    # ORA LA TABELLA FERIE RAGIONA A SETTIMANE
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ferie (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,16 +42,16 @@ def init_db():
 
 init_db()
 
-class GenerateRequest(BaseModel):
+class ScheduleRequest(BaseModel):
     year: int
-    month: int
+    target_weeks: List[int]
 
 class AdminRequest(BaseModel):
     employee_id: int
     year: int
     iso_week: int
 
-# --- ROTTA PER IL FRONTEND (PASSO 2) ---
+# --- ROTTA PER IL FRONTEND ---
 @app.get("/")
 async def serve_frontend():
     return FileResponse("index.html")
@@ -65,7 +65,16 @@ def add_weekend(req: AdminRequest):
     c.execute("INSERT INTO riposi_weekend (employee_id, year, iso_week) VALUES (?, ?, ?)", (req.employee_id, req.year, req.iso_week))
     conn.commit()
     conn.close()
-    return {"success": True, "message": "Weekend salvato!"}
+    return {"success": True}
+
+@app.delete("/api/weekends")
+def delete_weekend(req: AdminRequest):
+    conn = sqlite3.connect('turni.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM riposi_weekend WHERE employee_id=? AND year=? AND iso_week=?", (req.employee_id, req.year, req.iso_week))
+    conn.commit()
+    conn.close()
+    return {"success": True}
 
 @app.get("/api/weekends")
 def get_weekends(year: int):
@@ -85,7 +94,16 @@ def add_ferie(req: AdminRequest):
     c.execute("INSERT INTO ferie (employee_id, year, iso_week) VALUES (?, ?, ?)", (req.employee_id, req.year, req.iso_week))
     conn.commit()
     conn.close()
-    return {"success": True, "message": "Settimana di ferie salvata!"}
+    return {"success": True}
+
+@app.delete("/api/ferie")
+def delete_ferie(req: AdminRequest):
+    conn = sqlite3.connect('turni.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM ferie WHERE employee_id=? AND year=? AND iso_week=?", (req.employee_id, req.year, req.iso_week))
+    conn.commit()
+    conn.close()
+    return {"success": True}
 
 @app.get("/api/ferie")
 def get_ferie(year: int):
@@ -98,10 +116,11 @@ def get_ferie(year: int):
 
 # --- GENERAZIONE TURNI ---
 @app.post("/generate")
-def generate_schedule(request: GenerateRequest):
+def generate_schedule(request: ScheduleRequest):
     conn = sqlite3.connect('turni.db')
     c = conn.cursor()
     
+    # Legge i dati reali salvati nel server
     c.execute("SELECT employee_id, iso_week FROM riposi_weekend WHERE year=?", (request.year,))
     db_weekends = c.fetchall()
     
@@ -121,24 +140,18 @@ def generate_schedule(request: GenerateRequest):
             ferie_data[wk] = []
         ferie_data[wk].append(emp_id)
 
-    # Calcoliamo quali sono le settimane di questo mese per passarle al nuovo motore
-    cal = calendar.Calendar(firstweekday=0)
-    weeks_matrix = cal.monthdatescalendar(request.year, request.month)
-    target_weeks = [week[0].isocalendar()[1] for week in weeks_matrix]
-
     schedule = generate_weeks_schedule(
         year=request.year,
-        target_weeks=target_weeks,
+        target_weeks=request.target_weeks,
         db_weekends=weekends_data, 
         db_ferie=ferie_data
     )
     
     if not schedule:
-        return {"success": False, "message": "Nessun turno generato. Presidi minimi impossibili da coprire.", "data": []}
+        return {"status": "error", "message": "Nessun turno generato. Verifica i vincoli.", "data": []}
         
-    return {"success": True, "message": "Turni generati con successo!", "data": schedule}
+    return {"status": "success", "message": "Turni generati con successo!", "data": schedule}
 
-# --- AVVIO SERVER (HOST = 0.0.0.0 per accessibilità esterna) ---
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
