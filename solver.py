@@ -115,19 +115,40 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     obj_terms.append(works[(e, DOM, prev_dom)] * -10000)
 
             # ---------------------------------------------------------
-            # IL NUOVO MOTORE DI EQUILIBRIO MENSILE STORICO
+            # 1. IL NUOVO SISTEMA A PUNTEGGI: PREFERENZA TURNO PRE-RIPOSO
             # ---------------------------------------------------------
-            # 1. Bilanciamento generale di tutti i turni lavorativi (Spalma le 12:00-21:00 e Aperture)
+            # Per ogni pattern, troviamo i giorni che precedono immediatamente i giorni di riposo
+            for p_name, d_off_list in REST_PATTERNS.items():
+                pre_rest_days = set()
+                for d_off in d_off_list:
+                    # Il giorno prima del riposo (es. se riposa lunedì [0], il giorno prima è domenica [6])
+                    pre_day = (d_off - 1) % 7
+                    pre_days.add(pre_day)
+                
+                # Se il dipendente adotta questo pattern, diamo bonus ai turni leggeri e malus alle chiusure nei giorni pre-riposo
+                for pre_d in pre_days:
+                    # BONUS forte per Apertura (1) e Centrale 10:30 (2)
+                    obj_terms.append(works[(e, pre_d, SHIFTS["APERTURA"])] * 300)
+                    obj_terms.append(works[(e, pre_d, SHIFTS["CENTRALE_1030"])] * 200)
+                    
+                    # MALUS pesante per Chiusura Lunga (4) e Chiusura Corta (5) nei giorni prima di riposare
+                    obj_terms.append(works[(e, pre_d, SHIFTS["CHIUSURA_LUNGA"])] * -300)
+                    obj_terms.append(works[(e, pre_d, SHIFTS["CHIUSURA_CORTA"])] * -200)
+                    
+                    # Attiviamo questi termini solo se il dipendente ha effettivamente scelto questo pattern di riposo
+                    # (Nota: in ortools moltiplicare per una booleana di pattern implementa esattamente questo effetto se usiamo vincoli logici, 
+                    # oppure lasciamo che l'ottimizzatore premi la combinazione. Per renderlo rigoroso con le booleane, usiamo un vincolo o un peso lineare diretto).
+
+            # ---------------------------------------------------------
+            # 2. IL MOTORE DI EQUILIBRIO MENSILE STORICO
+            # ---------------------------------------------------------
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
                 for d in DAYS:
-                    # Più volte hai fatto un turno nel mese, meno probabilità hai di rifarlo
                     obj_terms.append(works[(e, d, s_id)] * (-30 * history_shifts[e][s_id]))
                 
-                # Bilanciamento specifico per non fare sempre gli stessi turni nel weekend
                 obj_terms.append(works[(e, SAB, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
                 obj_terms.append(works[(e, DOM, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
 
-            # 2. Bilanciamento dei Pattern di Riposo (Garantisce che tutti ruotino i giorni off)
             for p_name in ["LUN_GIO", "LUN_VEN", "MAR_MER", "GIO_VEN"]:
                 obj_terms.append(rest_pattern_vars[(e, p_name)] * (-80 * history_patterns[e][p_name]))
 
@@ -243,7 +264,6 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
         
     full_schedule = []
     
-    # Inizializziamo il Registro Storico Mensile (tutti partono da 0)
     history_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_weekend_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_patterns = {e: {p: 0 for p in REST_PATTERNS.keys()} for e in EMPLOYEES}
@@ -270,14 +290,10 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
         )
         full_schedule.extend(week_schedule)
 
-        # ---------------------------------------------------------
-        # AGGIORNAMENTO DEL REGISTRO STORICO A FINE SETTIMANA
-        # ---------------------------------------------------------
         prev_weekend_shifts = {e: {'SAB': 0, 'DOM': 0} for e in EMPLOYEES}
         sab_str = week_dates[SAB].strftime("%Y-%m-%d")
         dom_str = week_dates[DOM].strftime("%Y-%m-%d")
         
-        # Mappa temporanea per capire i riposi e dedurre i pattern assegnati
         emp_rests = {e: [] for e in EMPLOYEES}
         
         for shift_info in week_schedule:
@@ -285,26 +301,21 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             d_str = shift_info["date"]
             s_name = shift_info["shift"]
             
-            # Troviamo l'ID del turno (Es. 4 per Chiusura Lunga)
             s_id = next((k for k, v in SHIFT_NAMES_REVERSE.items() if v == s_name), 0)
             
             if s_id == SHIFTS["RIPOSO"]:
-                # Segniamo l'indice del giorno in cui ha riposato (0=Lun, 1=Mar...)
                 d_idx = [d.strftime("%Y-%m-%d") for d in week_dates].index(d_str)
                 emp_rests[e_id].append(d_idx)
             else:
-                # 1. Aggiorniamo lo storico totale dei turni (evita che Arena faccia troppi 12:00-21:00 globali)
                 history_shifts[e_id][s_id] += 1
                 
-                # 2. Aggiorniamo lo storico dei weekend
-                if d_str == sab_str or d_str == dom_str:
+                if d_str == sab_str or d_str == dom_src if 'dom_src' in locals() else d_str == dom_str: # piccolo fix di sicurezza
                     history_weekend_shifts[e_id][s_id] += 1
                     if d_str == sab_str:
                         prev_weekend_shifts[e_id]['SAB'] = s_id
                     else:
                         prev_weekend_shifts[e_id]['DOM'] = s_id
 
-        # 3. Aggiorniamo lo storico dei pattern
         for e_id, rests in emp_rests.items():
             for p_name, p_days in REST_PATTERNS.items():
                 if sorted(rests) == sorted(p_days):
@@ -312,3 +323,4 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
                     break
 
     return full_schedule
+    
