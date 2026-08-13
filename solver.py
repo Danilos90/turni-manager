@@ -114,28 +114,22 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 if prev_dom != 0:
                     obj_terms.append(works[(e, DOM, prev_dom)] * -10000)
 
+                        # ---------------------------------------------------------
+            # 1. DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
             # ---------------------------------------------------------
-            # 1. IL NUOVO SISTEMA A PUNTEGGI: PREFERENZA TURNO PRE-RIPOSO
-            # ---------------------------------------------------------
-            # Per ogni pattern, troviamo i giorni che precedono immediatamente i giorni di riposo
-            for p_name, d_off_list in REST_PATTERNS.items():
-                pre_rest_days = set()
-                for d_off in d_off_list:
-                    # Il giorno prima del riposo (es. se riposa lunedì [0], il giorno prima è domenica [6])
-                    pre_day = (d_off - 1) % 7
-                    pre_rest_days.add(pre_day)
+            # Impedisce matematicamente qualsiasi turno che finisce alle 21:00 
+            # nel giorno immediatamente precedente a un riposo o alle ferie.
+            for d in range(6): # Controlla da Lunedì (0) a Sabato (5)
+                # Capisce se "domani" (d+1) il dipendente riposa o è in ferie
+                off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
                 
-                # Se il dipendente adotta questo pattern, diamo bonus ai turni leggeri e malus alle chiusure nei giorni pre-riposo
-                for pre_d in pre_rest_days:
-                    # BONUS forte per Apertura (1) e Centrale 10:30 (2)
-                    obj_terms.append(works[(e, pre_d, SHIFTS["APERTURA"])] * 300)
-                    obj_terms.append(works[(e, pre_d, SHIFTS["CENTRALE_1030"])] * 200)
-                    
-                    # MALUS pesante per Chiusura Lunga (4) e Chiusura Corta (5) nei giorni prima di riposare
-                    obj_terms.append(works[(e, pre_d, SHIFTS["CHIUSURA_LUNGA"])] * -300)
-                    obj_terms.append(works[(e, pre_d, SHIFTS["CHIUSURA_CORTA"])] * -200)
+                # Se domani è off, è impossibile fare la Chiusura Lunga oggi
+                model.Add(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] + off_tomorrow <= 1)
+                
+                # Se domani è off, è impossibile fare la Chiusura Corta oggi
+                model.Add(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] + off_tomorrow <= 1)
 
-            # ---------------------------------------------------------
+ # ---------------------------------------------------------
             # 2. IL MOTORE DI EQUILIBRIO MENSILE STORICO
             # ---------------------------------------------------------
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
