@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionale Turni Pro</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1250px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 10px;
+        }
+        .tab-btn {
+            background-color: transparent;
+            color: #7f8c8d;
+            border: 2px solid transparent;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .tab-btn:hover { color: #34495e; background-color: #ecf0f1; }
+        .tab-btn.active { color: #2980b9; border: 2px solid #2980b9; background-color: #e8f4f8; }
+        
+        .tab-content { display: none; animation: fadeIn 0.4s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .controls, .admin-form {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 25px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        select, button, input { padding: 10px 15px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; }
+        button { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; transition: background 0.3s; }
+        button:hover { background-color: #2980b9; }
+        button.save-btn { background-color: #27ae60; }
+        button.save-btn:hover { background-color: #2ecc71; }
+
+        #message, #admin-message, #ferie-message { text-align: center; font-weight: bold; margin-bottom: 15px; }
+        .success { color: #27ae60; }
+        .error { color: #c0392b; }
+        .loading { color: #f39c12; }
+        
+        .table-container { overflow-x: auto; margin-top: 15px; margin-bottom: 35px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #ddd; padding: 8px 4px; text-align: center; white-space: nowrap; }
+        th { background-color: #34495e; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        tr:hover { background-color: #f1f1f1; }
+        
+        .week-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px;
+            border-radius: 5px 5px 0 0;
+            margin-top: 25px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .shift-riposo { background-color: #e74c3c; color: white; font-weight: bold; }
+        .shift-ferie { background-color: #f39c12; color: white; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🗓️ Gestionale Negozio</h1>
+    
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('tab-turni', this)">Matrice Turni</button>
+        <button class="tab-btn" onclick="switchTab('tab-weekend', this)">Calendario Weekend</button>
+        <button class="tab-btn" onclick="switchTab('tab-ferie', this)">Gestione Ferie</button>
+    </div>
+
+    <!-- SCHEDA 1: GENERAZIONE TURNI -->
+    <div id="tab-turni" class="tab-content active">
+        <div class="controls">
+            <label for="month">Mese:</label>
+            <select id="month">
+                <option value="1">Gennaio</option>
+                <option value="2">Febbraio</option>
+                <option value="3">Marzo</option>
+                <option value="4">Aprile</option>
+                <option value="5">Maggio</option>
+                <option value="6">Giugno</option>
+                <option value="7">Luglio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Settembre</option>
+                <option value="10">Ottobre</option>
+                <option value="11">Novembre</option>
+                <option value="12">Dicembre</option>
+            </select>
+
+            <label for="year">Anno:</label>
+            <select id="year">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+
+            <button onclick="generateSchedule()">Genera Griglia</button>
+        </div>
+
+        <div id="message"></div>
+        <div id="tables-wrapper"></div>
+    </div>
+
+    <!-- SCHEDA 2: INSERIMENTO WEEKEND LIBERI -->
+    <div id="tab-weekend" class="tab-content">
+        <div class="admin-form">
+            <label for="wk-year">Anno:</label>
+            <select id="wk-year" onchange="populateWeekendsDropdown(); loadWeekendSummary();">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+
+            <label for="employee-id">Dipendente:</label>
+            <select id="employee-id">
+                <option value="1">Arena Caterina</option>
+                <option value="2">De Giacomo Giuseppe</option>
+                <option value="3">Lucidi Danilo</option>
+                <option value="4">Marono Alessia</option>
+                <option value="5">Panariello Luigi</option>
+                <option value="6">Paracuollo Mario</option>
+                <option value="7">Quaranta Antonio</option>
+                <option value="8">Scarrone Danilo</option>
+                <option value="9">Squeglia Gaetana</option>
+            </select>
+
+            <label for="weekend-select">Data Weekend:</label>
+            <select id="weekend-select"></select>
+
+            <button class="save-btn" onclick="saveWeekend()">Salva Riposo</button>
+        </div>
+        <div id="admin-message"></div>
+        
+        <hr style="border: 0; border-top: 1px solid #ecf0f1; margin: 30px 0;">
+        <h3 style="text-align: center; color: #2c3e50;">📋 Riepilogo Riposi Salvati</h3>
+        <div class="table-container" id="weekend-summary-container">
+            <p style="text-align: center; color: #7f8c8d;">Nessun dato caricato.</p>
+        </div>
+    </div>
+
+    <!-- SCHEDA 3: FERIE SETTIMANALI -->
+    <div id="tab-ferie" class="tab-content">
+        <div class="admin-form">
+            <label for="ferie-year">Anno:</label>
+            <select id="ferie-year" onchange="populateFerieDropdown(); loadFerieSummary();">
+                <option value="2025">2025</option>
+                <option value="2026" selected>2026</option>
+            </select>
+
+            <label for="ferie-employee">Dipendente:</label>
+            <select id="ferie-employee">
+                <option value="1">Arena Caterina</option>
+                <option value="2">De Giacomo Giuseppe</option>
+                <option value="3">Lucidi Danilo</option>
+                <option value="4">Marono Alessia</option>
+                <option value="5">Panariello Luigi</option>
+                <option value="6">Paracuollo Mario</option>
+                <option value="7">Quaranta Antonio</option>
+                <option value="8">Scarrone Danilo</option>
+                <option value="9">Squeglia Gaetana</option>
+            </select>
+
+            <label for="ferie-select">Settimana di Ferie:</label>
+            <select id="ferie-select"></select>
+
+            <button class="save-btn" onclick="saveFerie()">Salva Ferie</button>
+        </div>
+        <div id="ferie-message"></div>
+
+        <hr style="border: 0; border-top: 1px solid #ecf0f1; margin: 30px 0;">
+        <h3 style="text-align: center; color: #2c3e50;">🌴 Riepilogo Ferie Salvate</h3>
+        <div class="table-container" id="ferie-summary-container">
+            <p style="text-align: center; color: #7f8c8d;">Nessun dato caricato.</p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const nomiDipendenti = {
+        1: "Arena Caterina",
+        2: "De Giacomo Giuseppe",
+        3: "Lucidi Danilo",
+        4: "Marono Alessia",
+        5: "Panariello Luigi",
+        6: "Paracuollo Mario",
+        7: "Quaranta Antonio",
+        8: "Scarrone Danilo",
+        9: "Squeglia Gaetana"
+    };
+
+    const giorniSettimana = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
+
+    function switchTab(tabId, btnElement) {
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        
+        document.getElementById(tabId).classList.add('active');
+        btnElement.classList.add('active');
+
+        if(tabId === 'tab-weekend') { populateWeekendsDropdown(); loadWeekendSummary(); }
+        if(tabId === 'tab-ferie') { populateFerieDropdown(); loadFerieSummary(); }
+    }
+
+    function getWeekNumber(d) {
+        d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+        var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        return Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+    }
+
+    function populateWeekendsDropdown() {
+        const year = parseInt(document.getElementById('wk-year').value);
+        const select = document.getElementById('weekend-select');
+        select.innerHTML = ""; 
+        let d = new Date(year, 0, 1);
+        while (d.getDay() !== 6) { d.setDate(d.getDate() + 1); }
+        while (d.getFullYear() === year) {
+            let sat = new Date(d);
+            let sun = new Date(d);
+            sun.setDate(sun.getDate() + 1);
+            let isoWeek = getWeekNumber(sun); 
+            let satStr = sat.toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: 'numeric'});
+            let sunStr = sun.toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: 'numeric'});
+            let option = document.createElement('option');
+            option.value = isoWeek;
+            option.text = `Weekend ${satStr} - ${sunStr}`;
+            select.appendChild(option);
+            d.setDate(d.getDate() + 7);
+        }
+    }
+
+    async function saveWeekend() {
+        const empId = parseInt(document.getElementById('employee-id').value);
+        const year = parseInt(document.getElementById('wk-year').value);
+        const isoWeek = parseInt(document.getElementById('weekend-select').value);
+        const msgEl = document.getElementById('admin-message');
+        msgEl.className = 'loading'; msgEl.innerText = "Salvataggio in corso...";
+
+        try {
+            const response = await fetch("/api/weekends", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employee_id: empId, year: year, iso_week: isoWeek })
+            });
+            const result = await response.json();
+            if (result.success) { msgEl.className = 'success'; msgEl.innerText = "✅ " + result.message; loadWeekendSummary(); }
+            else { msgEl.className = 'error'; msgEl.innerText = "❌ Errore nel salvataggio."; }
+        } catch (error) { msgEl.className = 'error'; msgEl.innerText = "❌ Impossibile connettersi al server."; }
+    }
+
+    async function loadWeekendSummary() {
+        const year = parseInt(document.getElementById('wk-year').value);
+        const container = document.getElementById('weekend-summary-container');
+        container.innerHTML = "<p class='loading' style='text-align:center;'>⏳ Caricamento...</p>";
+
+        try {
+            const response = await fetch(`/api/weekends?year=${year}`);
+            const result = await response.json();
+            if (!result.success || !result.data || result.data.length === 0) {
+                container.innerHTML = "<p style='text-align:center;'>Nessun riposo salvato per questo anno.</p>"; return;
+            }
+            const raggruppati = {};
+            result.data.forEach(item => {
+                if (!raggruppati[item.iso_week]) raggruppati[item.iso_week] = [];
+                raggruppati[item.iso_week].push(nomiDipendenti[item.employee_id]);
+            });
+            const settimaneOrdinate = Object.keys(raggruppati).map(Number).sort((a, b) => a - b);
+            let html = '<table><thead><tr><th>Data Weekend</th><th>Dipendenti in Riposo</th></tr></thead><tbody>';
+            const selectOpzioni = document.getElementById('weekend-select').options;
+            settimaneOrdinate.forEach(wk => {
+                const dipendenti = raggruppati[wk].join(", ");
+                let testoData = `Settimana ISO ${wk}`;
+                for (let i = 0; i < selectOpzioni.length; i++) {
+                    if (parseInt(selectOpzioni[i].value) === wk) { testoData = selectOpzioni[i].text; break; }
+                }
+                html += `<tr><td><strong>${testoData}</strong></td><td>${dipendenti}</td></tr>`;
+            });
+            html += '</tbody></table>'; container.innerHTML = html;
+        } catch (error) { container.innerHTML = "<p class='error' style='text-align:center;'>❌ Errore caricamento.</p>"; }
+    }
+
+    function populateFerieDropdown() {
+        const year = parseInt(document.getElementById('ferie-year').value);
+        const select = document.getElementById('ferie-select');
+        select.innerHTML = ""; 
+        let d = new Date(year, 0, 1);
+        while (d.getDay() !== 1) { d.setDate(d.getDate() + 1); }
+        while (d.getFullYear() === year) {
+            let mon = new Date(d);
+            let sun = new Date(d);
+            sun.setDate(sun.getDate() + 6);
+            let isoWeek = getWeekNumber(sun); 
+            let monStr = mon.toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: 'numeric'});
+            let sunStr = sun.toLocaleDateString('it-IT', {day: '2-digit', month: '2-digit', year: 'numeric'});
+            let option = document.createElement('option');
+            option.value = isoWeek;
+            option.text = `Settimana: ${monStr} - ${sunStr}`;
+            select.appendChild(option);
+            d.setDate(d.getDate() + 7);
+        }
+    }
+
+    async function saveFerie() {
+        const empId = parseInt(document.getElementById('ferie-employee').value);
+        const year = parseInt(document.getElementById('ferie-year').value);
+        const isoWeek = parseInt(document.getElementById('ferie-select').value);
+        const msgEl = document.getElementById('ferie-message');
+        msgEl.className = 'loading'; msgEl.innerText = "Salvataggio in corso...";
+
+        try {
+            const response = await fetch("/api/ferie", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ employee_id: empId, year: year, iso_week: isoWeek })
+            });
+            const result = await response.json();
+            if (result.success) { msgEl.className = 'success'; msgEl.innerText = "✅ " + result.message; loadFerieSummary(); }
+            else { msgEl.className = 'error'; msgEl.innerText = "❌ Errore nel salvataggio."; }
+        } catch (error) { msgEl.className = 'error'; msgEl.innerText = "❌ Impossibile connettersi al server."; }
+    }
+
+    async function loadFerieSummary() {
+        const year = parseInt(document.getElementById('ferie-year').value);
+        const container = document.getElementById('ferie-summary-container');
+        container.innerHTML = "<p class='loading' style='text-align:center;'>⏳ Caricamento...</p>";
+
+        try {
+            const response = await fetch(`/api/ferie?year=${year}`);
+            const result = await response.json();
+            if (!result.success || !result.data || result.data.length === 0) {
+                container.innerHTML = "<p style='text-align:center;'>Nessuna ferie salvata.</p>"; return;
+            }
+            const raggruppati = {};
+            result.data.forEach(item => {
+                if (!raggruppati[item.iso_week]) raggruppati[item.iso_week] = [];
+                raggruppati[item.iso_week].push(nomiDipendenti[item.employee_id]);
+            });
+            const settimaneOrdinate = Object.keys(raggruppati).map(Number).sort((a, b) => a - b);
+            let html = '<table><thead><tr><th>Settimana Ferie</th><th>Dipendenti in Ferie</th></tr></thead><tbody>';
+            const selectOpzioni = document.getElementById('ferie-select').options;
+            settimaneOrdinate.forEach(wk => {
+                const dipendenti = raggruppati[wk].join(", ");
+                let testoData = `Settimana ISO ${wk}`;
+                for (let i = 0; i < selectOpzioni.length; i++) {
+                    if (parseInt(selectOpzioni[i].value) === wk) { testoData = selectOpzioni[i].text; break; }
+                }
+                html += `<tr><td><strong>${testoData}</strong></td><td>${dipendenti}</td></tr>`;
+            });
+            html += '</tbody></table>'; container.innerHTML = html;
+        } catch (error) { container.innerHTML = "<p class='error' style='text-align:center;'>❌ Errore caricamento.</p>"; }
+    }
+
+    async function generateSchedule() {
+        const month = parseInt(document.getElementById('month').value);
+        const year = parseInt(document.getElementById('year').value);
+        const messageEl = document.getElementById('message');
+        const wrapper = document.getElementById('tables-wrapper');
+
+        messageEl.className = 'loading';
+        messageEl.innerText = "⏳ Calcolo dei vincoli in corso (Google OR-Tools)...";
+        wrapper.innerHTML = "";
+
+        try {
+            const response = await fetch("/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ year: year, month: month })
+            });
+
+            const result = await response.json();
+
+            if (!result.success || !result.data || result.data.length === 0) {
+                messageEl.className = 'error';
+                messageEl.innerText = "❌ " + (result.message || "Nessun turno trovato. Vincoli in conflitto.");
+                return;
+            }
+
+            messageEl.className = 'success';
+            messageEl.innerText = "✅ " + result.message;
+            buildWeeklyTables(result.data);
+
+        } catch (error) {
+            messageEl.className = 'error';
+            messageEl.innerText = "❌ Errore di connessione al server Uvicorn.";
+        }
+    }
+
+    // --- VINCOLO 3: VISUALIZZAZIONE DIVISA PER SETTIMANA ---
+    function buildWeeklyTables(data) {
+        const wrapper = document.getElementById('tables-wrapper');
+        wrapper.innerHTML = "";
+
+        const allDates = [...new Set(data.map(item => item.date))].sort();
+        const employees = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+        // Raggruppa le date per Settimana
+        const weeksMap = {};
+        allDates.forEach(dateStr => {
+            const d = new Date(dateStr);
+            const weekNum = getWeekNumber(d);
+            if (!weeksMap[weekNum]) weeksMap[weekNum] = [];
+            weeksMap[weekNum].push(dateStr);
+        });
+
+        // Crea una tabella separata per ogni settimana
+        Object.keys(weeksMap).forEach((weekNum, index) => {
+            const weekDates = weeksMap[weekNum];
+            
+            let html = `<div class="week-header">Settimana ${index + 1} (Settimana ISO ${weekNum})</div>`;
+            html += '<div class="table-container"><table><thead><tr><th>Dipendente</th>';
+
+            weekDates.forEach(dateStr => {
+                const d = new Date(dateStr);
+                const dayName = giorniSettimana[(d.getDay() + 6) % 7];
+                const parts = dateStr.split('-');
+                const formattedDate = `${parts[2]}/${parts[1]}/${parts[0].slice(2)}`;
+
+                html += `<th>${dayName}<br><span style="font-size: 11px; font-weight: normal;">${formattedDate}</span></th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            employees.forEach(emp => {
+                html += `<tr><td><strong>${nomiDipendenti[emp]}</strong></td>`;
+                weekDates.forEach(dateStr => {
+                    const found = data.find(item => item.employee_id === emp && item.date === dateStr);
+                    const shift = found ? found.shift : '-';
+
+                    if (shift === "Riposo") {
+                        html += `<td class="shift-riposo">${shift}</td>`;
+                    } else if (shift === "Ferie") {
+                        html += `<td class="shift-ferie">${shift}</td>`;
+                    } else {
+                        html += `<td>${shift}</td>`;
+                    }
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            wrapper.innerHTML += html;
+        });
+    }
+
+    window.onload = () => {
+        const currentMonth = new Date().getMonth() + 1;
+        document.getElementById('month').value = currentMonth;
+    };
+</script>
+
+</body>
+</html>
