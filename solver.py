@@ -123,10 +123,10 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 for d_off in d_off_list:
                     # Il giorno prima del riposo (es. se riposa lunedì [0], il giorno prima è domenica [6])
                     pre_day = (d_off - 1) % 7
-                    pre_days.add(pre_day)
+                    pre_rest_days.add(pre_day)
                 
                 # Se il dipendente adotta questo pattern, diamo bonus ai turni leggeri e malus alle chiusure nei giorni pre-riposo
-                for pre_d in pre_days:
+                for pre_d in pre_rest_days:
                     # BONUS forte per Apertura (1) e Centrale 10:30 (2)
                     obj_terms.append(works[(e, pre_d, SHIFTS["APERTURA"])] * 300)
                     obj_terms.append(works[(e, pre_d, SHIFTS["CENTRALE_1030"])] * 200)
@@ -134,10 +134,6 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     # MALUS pesante per Chiusura Lunga (4) e Chiusura Corta (5) nei giorni prima di riposare
                     obj_terms.append(works[(e, pre_d, SHIFTS["CHIUSURA_LUNGA"])] * -300)
                     obj_terms.append(works[(e, pre_d, SHIFTS["CHIUSURA_CORTA"])] * -200)
-                    
-                    # Attiviamo questi termini solo se il dipendente ha effettivamente scelto questo pattern di riposo
-                    # (Nota: in ortools moltiplicare per una booleana di pattern implementa esattamente questo effetto se usiamo vincoli logici, 
-                    # oppure lasciamo che l'ottimizzatore premi la combinazione. Per renderlo rigoroso con le booleane, usiamo un vincolo o un peso lineare diretto).
 
             # ---------------------------------------------------------
             # 2. IL MOTORE DI EQUILIBRIO MENSILE STORICO
@@ -309,7 +305,8 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             else:
                 history_shifts[e_id][s_id] += 1
                 
-                if d_str == sab_str or d_str == dom_src if 'dom_src' in locals() else d_str == dom_str: # piccolo fix di sicurezza
+                # CORRETTA QUESTA RIGA:
+                if d_str == sab_str or d_str == dom_str: 
                     history_weekend_shifts[e_id][s_id] += 1
                     if d_str == sab_str:
                         prev_weekend_shifts[e_id]['SAB'] = s_id
