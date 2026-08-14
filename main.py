@@ -37,13 +37,22 @@ def init_db():
             iso_week INTEGER
         )
     ''')
-    # ERRORE 2 CORRETTO: Indentazione sistemata
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS richieste (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             employee_id INTEGER,
             req_date TEXT,
             shift_name TEXT
+        )
+    ''')
+    # NUOVA TABELLA: MEMORIA PERMANENTE DEI TURNI
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS turni_generati (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER,
+            date_str TEXT,
+            shift_name TEXT,
+            UNIQUE(employee_id, date_str)
         )
     ''')
     conn.commit()
@@ -65,6 +74,15 @@ class RichiestaRequest(BaseModel):
     employee_id: int
     req_date: str
     shift_name: str
+
+# Nuovi modelli per il salvataggio
+class TurnoGenerato(BaseModel):
+    date: str
+    employee_id: int
+    shift: str
+
+class SalvaScheduleRequest(BaseModel):
+    schedule: List[TurnoGenerato]
 
 # --- ROTTA PER IL FRONTEND ---
 @app.get("/")
@@ -149,6 +167,38 @@ def get_richieste():
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "req_date": r[1], "shift_name": r[2]} for r in rows]}
 
+# --- API SALVATAGGIO E MEMORIA TURNI ---
+@app.post("/api/save_schedule")
+def save_schedule(req: SalvaScheduleRequest):
+    conn = sqlite3.connect('turni.db')
+    c = conn.cursor()
+    for turno in req.schedule:
+        # INSERT OR REPLACE sovrascrive se esiste già un turno per quel dipendente in quella data
+        c.execute('''
+            INSERT OR REPLACE INTO turni_generati (employee_id, date_str, shift_name)
+            VALUES (?, ?, ?)
+        ''', (turno.employee_id, turno.date, turno.shift))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": "Griglia salvata nel database permanente!"}
+
+@app.get("/api/get_schedule")
+def get_schedule():
+    conn = sqlite3.connect('turni.db')
+    c = conn.cursor()
+    c.execute("SELECT date_str, employee_id, shift_name FROM turni_generati")
+    rows = c.fetchall()
+    conn.close()
+    
+    schedule = []
+    for r in rows:
+        schedule.append({
+            "date": r[0],
+            "employee_id": r[1],
+            "shift": r[2]
+        })
+    return {"success": True, "data": schedule}
+
 # --- GENERAZIONE TURNI ---
 @app.post("/generate")
 def generate_schedule(request: ScheduleRequest):
@@ -165,7 +215,6 @@ def generate_schedule(request: ScheduleRequest):
     c.execute("SELECT employee_id, req_date, shift_name FROM richieste")
     db_richieste_raw = c.fetchall()
     
-    # ERRORE 1 CORRETTO: Spostata la chiusura alla fine di tutte le letture
     conn.close() 
     
     weekends_data = {}
