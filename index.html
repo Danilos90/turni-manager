@@ -46,6 +46,7 @@
 <div class="container">
     <h1>Generatore Turni Settimanali</h1>
     
+    <!-- PRIMO PANNELLO: FERIE E WEEKEND -->
     <div class="panel">
         <h3>Gestione Database (Ferie e Riposi Weekend)</h3>
         <div class="db-form">
@@ -57,22 +58,6 @@
             <input type="number" id="db-week" placeholder="Num. Settimana (es. 34)" min="1" max="52" style="width: 180px;">
             <button type="button" onclick="aggiungiAlDB()">Aggiungi Regola</button>
         </div>
-    <div class="panel">
-        <h3>Richieste Turni / Riposi Specifici</h3>
-        <div class="db-form">
-            <input type="date" id="req-date">
-            <select id="req-dipendente">
-                <!-- Riempi in JS come gli altri -->
-            </select>
-            <select id="req-turno">
-                <option value="Riposo">Giorno di Riposo</option>
-                <option value="Apertura">Apertura (09:30)</option>
-                <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option>
-                <option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
-            </select>
-            <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
-        </div>
-    </div>
 
         <div class="db-list">
             <div class="db-column">
@@ -84,8 +69,25 @@
                 <div id="lista-ferie">Caricamento in corso...</div>
             </div>
         </div>
-    </div>
+    </div> <!-- FINE PRIMO PANNELLO -->
 
+    <!-- SECONDO PANNELLO: RICHIESTE SPECIFICHE -->
+    <div class="panel">
+        <h3>Richieste Turni / Riposi Specifici</h3>
+        <div class="db-form">
+            <input type="date" id="req-date">
+            <select id="req-dipendente"></select>
+            <select id="req-turno">
+                <option value="Riposo">Giorno di Riposo</option>
+                <option value="Apertura">Apertura (09:30)</option>
+                <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option>
+                <option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
+            </select>
+            <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
+        </div>
+    </div> <!-- FINE SECONDO PANNELLO -->
+
+    <!-- TERZO PANNELLO: GENERAZIONE -->
     <div class="panel">
         <h3>Generazione Griglia</h3>
         <div class="controls">
@@ -132,11 +134,20 @@
 
     window.onload = function() {
         const selectDip = document.getElementById('db-dipendente');
+        const reqDip = document.getElementById('req-dipendente'); // SELEZIONE DEL NUOVO MENU
+        
         for (let id in dipendenti) {
+            // Popola menu ferie/weekend
             let opt = document.createElement('option');
             opt.value = id;
             opt.innerHTML = dipendenti[id];
             selectDip.appendChild(opt);
+            
+            // Popola menu richieste specifiche
+            let optReq = document.createElement('option');
+            optReq.value = id;
+            optReq.innerHTML = dipendenti[id];
+            reqDip.appendChild(optReq);
         }
         cambioAnnoMese();
     };
@@ -198,6 +209,33 @@
         caricaDatabaseDalServer(); // Ricarica la memoria a schermo
     }
 
+    // --- NUOVA FUNZIONE: AGGIUNGI RICHIESTA SPECIFICA ---
+    async function aggiungiRichiesta() {
+        const dateVal = document.getElementById('req-date').value;
+        const empId = parseInt(document.getElementById('req-dipendente').value);
+        const turnoVal = document.getElementById('req-turno').value;
+
+        if(!dateVal) {
+            alert("Per favore, seleziona una data per la richiesta.");
+            return;
+        }
+
+        try {
+            await fetch('/api/richieste', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    employee_id: empId, 
+                    req_date: dateVal, 
+                    shift_name: turnoVal 
+                })
+            });
+            alert("Richiesta salvata correttamente!");
+        } catch (error) {
+            alert("Errore nel salvataggio della richiesta.");
+        }
+    }
+
     async function rimuoviDalDB(tipo, week, empId) {
         const year = parseInt(document.getElementById('year').value);
         const endpoint = tipo === 'weekend' ? '/api/weekends' : '/api/ferie';
@@ -217,7 +255,6 @@
             container.innerHTML = '';
             let hasItems = false;
 
-            // Ordina le settimane per numero
             const sortedWeeks = Object.keys(db).sort((a, b) => parseInt(a) - parseInt(b));
 
             sortedWeeks.forEach(week => {
