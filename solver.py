@@ -36,7 +36,7 @@ SHIFT_NAMES_REVERSE = {
 }
 
 def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week, 
-               prev_weekend_shifts, history_shifts, history_weekend_shifts, history_patterns):
+               prev_weekend_shifts, history_shifts, history_weekend_shifts, history_patterns, db_richieste):
     
     model = cp_model.CpModel()
     works = {}
@@ -114,22 +114,24 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 if prev_dom != 0:
                     obj_terms.append(works[(e, DOM, prev_dom)] * -10000)
 
-                        # ---------------------------------------------------------
+            # ---------------------------------------------------------
             # 1. DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
             # ---------------------------------------------------------
-            # Impedisce matematicamente qualsiasi turno che finisce alle 21:00 
-            # nel giorno immediatamente precedente a un riposo o alle ferie.
-            for d in range(6): # Controlla da Lunedì (0) a Sabato (5)
-                # Capisce se "domani" (d+1) il dipendente riposa o è in ferie
+            for d in range(6): 
                 off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
-                
-                # Se domani è off, è impossibile fare la Chiusura Lunga oggi
                 model.Add(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] + off_tomorrow <= 1)
-                
-                # Se domani è off, è impossibile fare la Chiusura Corta oggi
                 model.Add(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] + off_tomorrow <= 1)
 
- # ---------------------------------------------------------
+            # ---------------------------------------------------------
+            # RICHIESTE SPECIFICHE (PREFERENZIALI ASSOLUTE)
+            # ---------------------------------------------------------
+            for d in DAYS:
+                d_str = week_dates[d].strftime("%Y-%m-%d")
+                if e in db_richieste and d_str in db_richieste[e]:
+                    req_shift = db_richieste[e][d_str]
+                    obj_terms.append(works[(e, d, req_shift)] * 100000)
+
+            # ---------------------------------------------------------
             # 2. IL MOTORE DI EQUILIBRIO MENSILE STORICO
             # ---------------------------------------------------------
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
@@ -248,9 +250,10 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
     return weekly_schedule
 
 
-def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_ferie=None):
+def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_ferie=None, db_richieste=None):
     if db_weekends is None: db_weekends = {}
     if db_ferie is None: db_ferie = {}
+    if db_richieste is None: db_richieste = {}
         
     full_schedule = []
     
@@ -276,7 +279,8 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             prev_weekend_shifts,
             history_shifts,
             history_weekend_shifts,
-            history_patterns
+            history_patterns,
+            db_richieste
         )
         full_schedule.extend(week_schedule)
 
@@ -299,7 +303,6 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             else:
                 history_shifts[e_id][s_id] += 1
                 
-                # CORRETTA QUESTA RIGA:
                 if d_str == sab_str or d_str == dom_str: 
                     history_weekend_shifts[e_id][s_id] += 1
                     if d_str == sab_str:
