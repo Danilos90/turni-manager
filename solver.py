@@ -1,4 +1,5 @@
 import datetime
+import random
 from ortools.sat.python import cp_model
 
 NUM_EMPLOYEES = 9
@@ -132,7 +133,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     obj_terms.append(works[(e, d, req_shift)] * 100000)
 
             # ---------------------------------------------------------
-            # 2. IL MOTORE DI EQUILIBRIO MENSILE STORICO
+            # 2. IL MOTORE DI EQUILIBRIO MENSILE STORICO (CON TIE-BREAKER)
             # ---------------------------------------------------------
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
                 for d in DAYS:
@@ -142,7 +143,9 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 obj_terms.append(works[(e, DOM, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
 
             for p_name in ["LUN_GIO", "LUN_VEN", "MAR_MER", "GIO_VEN"]:
-                obj_terms.append(rest_pattern_vars[(e, p_name)] * (-80 * history_patterns[e][p_name]))
+                # Aggiungiamo un punteggio casuale da 1 a 10 per rompere i pareggi (bias sequenziale)
+                tie_breaker = random.randint(1, 10)
+                obj_terms.append(rest_pattern_vars[(e, p_name)] * (tie_breaker - 80 * history_patterns[e][p_name]))
 
             # --- PROFILI MATEMATICI SETTIMANALI DEL DIPENDENTE ---
             ap_e = sum(works[(e, d, SHIFTS["APERTURA"])] for d in DAYS)
@@ -232,6 +235,10 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 8.0 
+    
+    # ELIMINAZIONE BIAS STRUTTURALE 
+    solver.parameters.randomize_search = True
+    solver.parameters.random_seed = random.randint(1, 10000)
     
     status = solver.Solve(model)
 
