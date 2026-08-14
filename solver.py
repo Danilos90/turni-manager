@@ -94,7 +94,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 model.Add(rest_pattern_vars[(e, "SAB_DOM")] == 0)
 
             # ---------------------------------------------------------
-            # 3. LE REGOLE BLINDATE DEL WEEKEND
+            # 3. LE REGOLE BLINDATE DEL WEEKEND (EQUILIBRIO CORRETTO)
             # ---------------------------------------------------------
             model.Add(
                 works[(e, SAB, SHIFTS["CENTRALE_1100"])] +
@@ -127,7 +127,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     model.Add(works[(e, LUN, SHIFTS["RIPOSO"])] == 0)
 
             # ---------------------------------------------------------
-            # DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO
+            # DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
             # ---------------------------------------------------------
             for d in range(6): 
                 off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
@@ -136,7 +136,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 model.Add(works[(e, d, SHIFTS["CENTRALE_1100"])] + off_tomorrow <= 1)
 
             # ---------------------------------------------------------
-            # RICHIESTE SPECIFICHE
+            # RICHIESTE SPECIFICHE (PREFERENZIALI ASSOLUTE)
             # ---------------------------------------------------------
             for d in DAYS:
                 d_str = week_dates[d].strftime("%Y-%m-%d")
@@ -145,7 +145,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     obj_terms.append(works[(e, d, req_shift)] * 100000)
 
             # ---------------------------------------------------------
-            # EQUILIBRIO MENSILE STORICO (CON TIE-BREAKER)
+            # IL MOTORE DI EQUILIBRIO MENSILE STORICO (CON TIE-BREAKER)
             # ---------------------------------------------------------
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
                 for d in DAYS:
@@ -235,8 +235,11 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
     extra_rests = total_weekday_rests % 5
     max_rests_per_day = base_rests_per_day + (1 if extra_rests > 0 else 0)
     
-    min_workers_weekday = active_count - max_rests_per_day
-    max_workers_weekday = active_count - base_rests_per_day
+    # VALVOLA DI SICUREZZA: Mai scendere sotto i 4 dipendenti richiesti strutturalmente
+    min_workers_weekday = max(4, active_count - max_rests_per_day)
+    max_workers_weekday = max(4, active_count - base_rests_per_day)
+    # Assicura che il max non sia inferiore al min (caso di troppe ferie)
+    max_workers_weekday = max(max_workers_weekday, min_workers_weekday)
 
     for d in [LUN, MAR, MER, GIO, VEN]:
         model.Add(daily_workers_var[d] >= min_workers_weekday)
@@ -285,6 +288,7 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
     history_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_weekend_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_patterns = {e: {p: 0 for p in REST_PATTERNS.keys()} for e in EMPLOYEES}
+    
     prev_weekend_shifts = {e: {'SAB': -1, 'DOM': -1} for e in EMPLOYEES}
     
     target_weeks = sorted(target_weeks)
@@ -306,38 +310,35 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             d_obj = datetime.datetime.strptime(d_str, "%Y-%m-%d").date()
             iso_year, iso_week, iso_day = d_obj.isocalendar()
             
-            # Ignoriamo i turni del futuro se si accavallano con la generazione
             if iso_year > year or (iso_year == year and iso_week >= target_weeks[0]):
                 continue
             
-            # 1. Ricostruzione Storico Totale Mensile
             if s_id != SHIFTS["RIPOSO"]:
                 history_shifts[e_id][s_id] += 1
-                if iso_day == 6 or iso_day == 7: # Sabato (6) o Domenica (7)
+                if iso_day == 6 or iso_day == 7:
                     history_weekend_shifts[e_id][s_id] += 1
                     
-            # 2. Aggancio del "Ponte" (Controlliamo ESATTAMENTE la settimana prima)
             if iso_year == year and iso_week == target_weeks[0] - 1:
                 if iso_day == 6:
                     prev_weekend_shifts[e_id]['SAB'] = s_id
                 elif iso_day == 7:
                     prev_weekend_shifts[e_id]['DOM'] = s_id
                     
-            # 3. Preparazione calcolo Pattern
             if s_id == SHIFTS["RIPOSO"]:
                 if iso_week not in emp_weekly_rests[e_id]:
                     emp_weekly_rests[e_id][iso_week] = []
                 emp_weekly_rests[e_id][iso_week].append(iso_day - 1) 
 
-        # Applichiamo i pattern storici ricostruiti
         for e_id, weeks_data in emp_weekly_rests.items():
             for wk, rests in weeks_data.items():
                 for p_name, p_days in REST_PATTERNS.items():
                     if sorted(rests) == sorted(p_days):
                         history_patterns[e_id][p_name] += 1
                         break
+
     # -----------------------------------------------------------------------
-    
+    # GENERAZIONE SETTIMANE
+    # -----------------------------------------------------------------------
     for iso_wk in target_weeks:
         week_dates = [datetime.date.fromisocalendar(year, iso_wk, d) for d in range(1, 8)]
         
