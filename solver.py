@@ -106,14 +106,23 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
                 model.Add(works[(e, SAB, s_id)] + works[(e, DOM, s_id)] <= 1)
 
+            # ---------------------------------------------------------
+            # PONTI E MEMORIA DEL WEEKEND PRECEDENTE
+            # ---------------------------------------------------------
             if e in prev_weekend_shifts:
-                prev_sab = prev_weekend_shifts[e].get('SAB', 0)
-                prev_dom = prev_weekend_shifts[e].get('DOM', 0)
+                prev_sab = prev_weekend_shifts[e].get('SAB', -1)
+                prev_dom = prev_weekend_shifts[e].get('DOM', -1)
                 
-                if prev_sab != 0:
+                # Evita di fare lo stesso turno del weekend scorso (ignorando ferie/riposi)
+                if prev_sab > 0 and prev_sab != SHIFTS["FERIE"]:
                     obj_terms.append(works[(e, SAB, prev_sab)] * -10000)
-                if prev_dom != 0:
+                if prev_dom > 0 and prev_dom != SHIFTS["FERIE"]:
                     obj_terms.append(works[(e, DOM, prev_dom)] * -10000)
+                
+                # IL PONTE DEL RIPOSO: Se ha riposato Domenica, FORZA il riposo di Lunedì
+                if prev_dom == SHIFTS["RIPOSO"]:
+                    # Premio colossale per assegnare il riposo di Lunedì (+50.000 punti)
+                    obj_terms.append(works[(e, LUN, SHIFTS["RIPOSO"])] * 50000)
 
             # ---------------------------------------------------------
             # 1. DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
@@ -143,7 +152,6 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 obj_terms.append(works[(e, DOM, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
 
             for p_name in ["LUN_GIO", "LUN_VEN", "MAR_MER", "GIO_VEN"]:
-                # Aggiungiamo un punteggio casuale da 1 a 10 per rompere i pareggi (bias sequenziale)
                 tie_breaker = random.randint(1, 10)
                 obj_terms.append(rest_pattern_vars[(e, p_name)] * (tie_breaker - 80 * history_patterns[e][p_name]))
 
@@ -236,7 +244,6 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 8.0 
     
-    # ELIMINAZIONE BIAS STRUTTURALE 
     solver.parameters.randomize_search = True
     solver.parameters.random_seed = random.randint(1, 10000)
     
@@ -267,7 +274,9 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
     history_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_weekend_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_patterns = {e: {p: 0 for p in REST_PATTERNS.keys()} for e in EMPLOYEES}
-    prev_weekend_shifts = {e: {'SAB': 0, 'DOM': 0} for e in EMPLOYEES}
+    
+    # Inizializziamo a -1 per capire la differenza tra "mai lavorato" e "ha riposato (0)"
+    prev_weekend_shifts = {e: {'SAB': -1, 'DOM': -1} for e in EMPLOYEES}
     
     target_weeks = sorted(target_weeks)
     
@@ -291,7 +300,6 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
         )
         full_schedule.extend(week_schedule)
 
-        prev_weekend_shifts = {e: {'SAB': 0, 'DOM': 0} for e in EMPLOYEES}
         sab_str = week_dates[SAB].strftime("%Y-%m-%d")
         dom_str = week_dates[DOM].strftime("%Y-%m-%d")
         
@@ -304,18 +312,19 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             
             s_id = next((k for k, v in SHIFT_NAMES_REVERSE.items() if v == s_name), 0)
             
+            # AGGIORNAMENTO MEMORIA WEEKEND (Registra ESATTAMENTE se si fa riposo)
+            if d_str == sab_str:
+                prev_weekend_shifts[e_id]['SAB'] = s_id
+            if d_str == dom_str:
+                prev_weekend_shifts[e_id]['DOM'] = s_id
+
             if s_id == SHIFTS["RIPOSO"]:
                 d_idx = [d.strftime("%Y-%m-%d") for d in week_dates].index(d_str)
                 emp_rests[e_id].append(d_idx)
             else:
                 history_shifts[e_id][s_id] += 1
-                
                 if d_str == sab_str or d_str == dom_str: 
                     history_weekend_shifts[e_id][s_id] += 1
-                    if d_str == sab_str:
-                        prev_weekend_shifts[e_id]['SAB'] = s_id
-                    else:
-                        prev_weekend_shifts[e_id]['DOM'] = s_id
 
         for e_id, rests in emp_rests.items():
             for p_name, p_days in REST_PATTERNS.items():
