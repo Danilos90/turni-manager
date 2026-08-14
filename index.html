@@ -113,6 +113,8 @@
                 </select>
             </div>
             <button onclick="calcolaTurni()" style="background-color: #27ae60;">CALCOLA TURNI ORA</button>
+            <button onclick="salvaGriglia()" id="btn-salva" style="background-color: #c0392b; display: none;">💾 SALVA GRIGLIA DEFINITIVA</button>
+            <button onclick="caricaGrigliaSalvata()" style="background-color: #2980b9;">📂 VEDI TURNI SALVATI</button>
         </div>
 
         <div class="checkbox-group" id="checkbox-group"></div>
@@ -131,19 +133,18 @@
 
     let db_weekends = {}; 
     let db_ferie = {}; 
+    let ultima_griglia_calcolata = []; // Variabile per la memoria
 
     window.onload = function() {
         const selectDip = document.getElementById('db-dipendente');
-        const reqDip = document.getElementById('req-dipendente'); // SELEZIONE DEL NUOVO MENU
+        const reqDip = document.getElementById('req-dipendente');
         
         for (let id in dipendenti) {
-            // Popola menu ferie/weekend
             let opt = document.createElement('option');
             opt.value = id;
             opt.innerHTML = dipendenti[id];
             selectDip.appendChild(opt);
             
-            // Popola menu richieste specifiche
             let optReq = document.createElement('option');
             optReq.value = id;
             optReq.innerHTML = dipendenti[id];
@@ -157,7 +158,6 @@
         caricaDatabaseDalServer();
     }
 
-    // --- CONNESSIONE AL DATABASE DEL SERVER ---
     async function caricaDatabaseDalServer() {
         const year = parseInt(document.getElementById('year').value);
         
@@ -206,10 +206,9 @@
             body: JSON.stringify({ employee_id: empId, year: year, iso_week: week })
         });
 
-        caricaDatabaseDalServer(); // Ricarica la memoria a schermo
+        caricaDatabaseDalServer();
     }
 
-    // --- NUOVA FUNZIONE: AGGIUNGI RICHIESTA SPECIFICA ---
     async function aggiungiRichiesta() {
         const dateVal = document.getElementById('req-date').value;
         const empId = parseInt(document.getElementById('req-dipendente').value);
@@ -246,7 +245,7 @@
             body: JSON.stringify({ employee_id: empId, year: year, iso_week: week })
         });
 
-        caricaDatabaseDalServer(); // Ricarica la memoria a schermo
+        caricaDatabaseDalServer();
     }
 
     function aggiornaVisualizzazioneDB() {
@@ -274,7 +273,6 @@
         renderList(db_ferie, 'lista-ferie', 'ferie');
     }
 
-    // --- CALCOLO TURNI ---
     function getIsoWeeksInMonth(year, month) {
         let weeks = new Set();
         let date = new Date(year, month - 1, 1);
@@ -322,6 +320,7 @@
 
         document.getElementById('loading').style.display = 'block';
         document.getElementById('results').innerHTML = '';
+        document.getElementById('btn-salva').style.display = 'none';
 
         try {
             const response = await fetch('/generate', {
@@ -337,13 +336,74 @@
             document.getElementById('loading').style.display = 'none';
 
             if (result.status === "success") {
+                ultima_griglia_calcolata = result.data;
                 renderTable(result.data, target_weeks);
+                document.getElementById('btn-salva').style.display = 'inline-block';
             } else {
                 alert("Errore nel calcolo: " + result.message);
             }
         } catch (error) {
             document.getElementById('loading').style.display = 'none';
             alert("Errore di connessione al server.");
+        }
+    }
+
+    async function salvaGriglia() {
+        if(ultima_griglia_calcolata.length === 0) {
+            alert("Nessuna griglia da salvare!");
+            return;
+        }
+        
+        if(!confirm("Sei sicuro di voler salvare questi turni? Sovrascriveranno eventuali turni già salvati per queste stesse date.")) return;
+
+        try {
+            const response = await fetch('/api/save_schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schedule: ultima_griglia_calcolata })
+            });
+            const result = await response.json();
+            if(result.success) {
+                alert("Griglia salvata nel database permanente!");
+                document.getElementById('btn-salva').style.display = 'none';
+            }
+        } catch(e) {
+            alert("Errore durante il salvataggio.");
+        }
+    }
+
+    async function caricaGrigliaSalvata() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results').innerHTML = '';
+        document.getElementById('btn-salva').style.display = 'none';
+
+        try {
+            const response = await fetch('/api/get_schedule');
+            const result = await response.json();
+            document.getElementById('loading').style.display = 'none';
+
+            if (result.success && result.data.length > 0) {
+                const tutteLeDate = [...new Set(result.data.map(item => item.date))].sort();
+                let target_weeks = new Set();
+                tutteLeDate.forEach(dStr => {
+                    let dObj = new Date(dStr);
+                    let target = new Date(dObj.valueOf());
+                    let dayNr = (dObj.getDay() + 6) % 7;
+                    target.setDate(target.getDate() - dayNr + 3);
+                    let firstThursday = target.valueOf();
+                    target.setMonth(0, 1);
+                    if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                    let isoWeek = 1 + Math.ceil((firstThursday - target) / 604800000);
+                    target_weeks.add(isoWeek);
+                });
+                
+                renderTable(result.data, Array.from(target_weeks).sort((a,b)=>a-b));
+            } else {
+                alert("Nessun turno salvato nel database.");
+            }
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            alert("Errore nel caricamento del database.");
         }
     }
 
@@ -360,11 +420,23 @@
 
         for (let i = 0; i < tutteLeDate.length; i += 7) {
             const giorniSettimana = tutteLeDate.slice(i, i + 7);
-            const isoWeek = weeks[i / 7]; 
+            
+            let currentIsoWeek = "Sconosciuta";
+            if (giorniSettimana.length > 0) {
+                 let firstDateStr = giorniSettimana[0];
+                 let dObj = new Date(firstDateStr);
+                 let target = new Date(dObj.valueOf());
+                 let dayNr = (dObj.getDay() + 6) % 7;
+                 target.setDate(target.getDate() - dayNr + 3);
+                 let firstThursday = target.valueOf();
+                 target.setMonth(0, 1);
+                 if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                 currentIsoWeek = 1 + Math.ceil((firstThursday - target) / 604800000);
+            }
 
             const weekHeader = document.createElement('div');
             weekHeader.className = 'week-header';
-            weekHeader.innerText = `Settimana ISO ${isoWeek}`;
+            weekHeader.innerText = `Settimana ISO ${currentIsoWeek}`;
             resultsDiv.appendChild(weekHeader);
 
             let tableHTML = `<table>
