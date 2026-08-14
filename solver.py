@@ -94,9 +94,8 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 model.Add(rest_pattern_vars[(e, "SAB_DOM")] == 0)
 
             # ---------------------------------------------------------
-            # LE REGOLE BLINDATE DEL WEEKEND (EQUILIBRIO CORRETTO)
+            # 3. LE REGOLE BLINDATE DEL WEEKEND (EQUILIBRIO CORRETTO)
             # ---------------------------------------------------------
-            # Vieta di avere 2 turni "pesanti" nel weekend (11-20, o Chiusure)
             model.Add(
                 works[(e, SAB, SHIFTS["CENTRALE_1100"])] +
                 works[(e, SAB, SHIFTS["CHIUSURA_LUNGA"])] + 
@@ -116,22 +115,19 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 prev_sab = prev_weekend_shifts[e].get('SAB', -1)
                 prev_dom = prev_weekend_shifts[e].get('DOM', -1)
                 
-                # Evita di fare lo stesso turno del weekend scorso (ignorando ferie/riposi)
                 if prev_sab > 0 and prev_sab != SHIFTS["FERIE"]:
                     obj_terms.append(works[(e, SAB, prev_sab)] * -10000)
                 if prev_dom > 0 and prev_dom != SHIFTS["FERIE"]:
                     obj_terms.append(works[(e, DOM, prev_dom)] * -10000)
                 
-                # IL PONTE DEL RIPOSO: Punteggio 1500 per bilanciare l'equilibratore settimanale
                 if prev_dom == SHIFTS["RIPOSO"]:
                     obj_terms.append(works[(e, LUN, SHIFTS["RIPOSO"])] * 1500)
                     
-                # DIVIETO DOMENICA-LUNEDÌ: Nessun riposo di lunedì se hai chiuso di domenica
                 if prev_dom in [SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"], SHIFTS["CENTRALE_1100"]]:
                     model.Add(works[(e, LUN, SHIFTS["RIPOSO"])] == 0)
 
             # ---------------------------------------------------------
-            # DIVIETO ASSOLUTO CHIUSURE E TURNI TARDIVI PRE-RIPOSO
+            # DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
             # ---------------------------------------------------------
             for d in range(6): 
                 off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
@@ -195,18 +191,13 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 10)
 
     # ---------------------------------------------------------
-    # STRUTTURA GIORNALIERA DEL NEGOZIO
+    # STRUTTURA GIORNALIERA DEL NEGOZIO E SPALMATURA RIPOSI
     # ---------------------------------------------------------
     daily_workers_var = {}
     for d in DAYS:
         daily_w = sum(works[(e, d, s)] for e in EMPLOYEES for s in [1, 2, 3, 4, 5])
-        # Minimo globale assoluto di 4 dipendenti
-        daily_workers_var[d] = model.NewIntVar(4, NUM_EMPLOYEES, f'dw_{d}')
+        daily_workers_var[d] = model.NewIntVar(0, NUM_EMPLOYEES, f'dw_{d}')
         model.Add(daily_workers_var[d] == daily_w)
-
-        # Valvola di Sfogo: Obbligo di 5 dipendenti SOLO su LUN, MAR, MER.
-        if d in [LUN, MAR, MER]:
-            model.Add(daily_workers_var[d] >= 5)
 
         aperture = sum(works[(e, d, SHIFTS["APERTURA"])] for e in EMPLOYEES)
         cc = sum(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] for e in EMPLOYEES)
@@ -218,7 +209,6 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
         model.Add(cc + cl == 2)
         model.Add(c1030 + c1100 == daily_w - 4) 
 
-        # Garanzia equilibrio centrali: se ci sono 6+ turnisti, c'è almeno un 10:30 e un 11:00
         is_6_or_more = model.NewBoolVar(f'is_6_or_more_d{d}')
         model.Add(daily_w >= 6).OnlyEnforceIf(is_6_or_more)
         model.Add(daily_w < 6).OnlyEnforceIf(is_6_or_more.Not())
@@ -234,18 +224,28 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             model.Add(cc <= 2)
 
     # ---------------------------------------------------------
-    # L'EQUILIBRATORE (LOAD BALANCER)
+    # EQUILIBRIO MATEMATICO DINAMICO DEI GIORNI FERIALI
     # ---------------------------------------------------------
-    max_wd = model.NewIntVar(4, NUM_EMPLOYEES, 'max_wd')
-    min_wd = model.NewIntVar(4, NUM_EMPLOYEES, 'min_wd')
+    active_count = len(active_employees)
+    weekend_off_count = len(db_weekend_employees)
     
-    model.AddMaxEquality(max_wd, [daily_workers_var[d] for d in [LUN, MAR, MER, GIO, VEN]])
-    model.AddMinEquality(min_wd, [daily_workers_var[d] for d in [LUN, MAR, MER, GIO, VEN]])
+    # I riposi totali da spalmare dal lunedì al venerdì sono sempre 2 per ogni persona che lavora nel weekend
+    total_weekday_rests = 2 * (active_count - weekend_off_count)
     
-    wd_diff = model.NewIntVar(0, NUM_EMPLOYEES, 'wd_diff')
-    model.Add(wd_diff == max_wd - min_wd)
-    obj_terms.append(wd_diff * -2000)
+    base_rests_per_day = total_weekday_rests // 5
+    extra_rests = total_weekday_rests % 5
+    max_rests_per_day = base_rests_per_day + (1 if extra_rests > 0 else 0)
+    
+    # Quanti dipendenti lavoreranno al minimo e al massimo per bilanciare i riposi calcolati
+    min_workers_weekday = active_count - max_rests_per_day
+    max_workers_weekday = active_count - base_rests_per_day
 
+    # Applichiamo i limiti calcolati ai singoli giorni feriali
+    for d in [LUN, MAR, MER, GIO, VEN]:
+        model.Add(daily_workers_var[d] >= min_workers_weekday)
+        model.Add(daily_workers_var[d] <= max_workers_weekday)
+
+    # Guidiamo l'algoritmo per concentrare gli eventuali lavoratori extra a inizio settimana
     model.Add(daily_workers_var[LUN] >= daily_workers_var[GIO])
     model.Add(daily_workers_var[LUN] >= daily_workers_var[VEN])
     model.Add(daily_workers_var[MAR] >= daily_workers_var[GIO])
@@ -289,7 +289,6 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
     history_weekend_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_patterns = {e: {p: 0 for p in REST_PATTERNS.keys()} for e in EMPLOYEES}
     
-    # Inizializzazione corretta della memoria per prevenire falsi riposi
     prev_weekend_shifts = {e: {'SAB': -1, 'DOM': -1} for e in EMPLOYEES}
     
     target_weeks = sorted(target_weeks)
@@ -326,7 +325,6 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             
             s_id = next((k for k, v in SHIFT_NAMES_REVERSE.items() if v == s_name), 0)
             
-            # Registra la traccia dei turni del weekend corrente per la settimana successiva
             if d_str == sab_str:
                 prev_weekend_shifts[e_id]['SAB'] = s_id
             if d_str == dom_str:
