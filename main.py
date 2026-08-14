@@ -37,7 +37,8 @@ def init_db():
             iso_week INTEGER
         )
     ''')
-        cursor.execute('''
+    # ERRORE 2 CORRETTO: Indentazione sistemata
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS richieste (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             employee_id INTEGER,
@@ -45,12 +46,12 @@ def init_db():
             shift_name TEXT
         )
     ''')
-
     conn.commit()
     conn.close()
 
 init_db()
 
+# --- MODELLI DATI ---
 class ScheduleRequest(BaseModel):
     year: int
     target_weeks: List[int]
@@ -59,6 +60,11 @@ class AdminRequest(BaseModel):
     employee_id: int
     year: int
     iso_week: int
+
+class RichiestaRequest(BaseModel):
+    employee_id: int
+    req_date: str
+    shift_name: str
 
 # --- ROTTA PER IL FRONTEND ---
 @app.get("/")
@@ -122,11 +128,8 @@ def get_ferie(year: int):
     rows = c.fetchall()
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "iso_week": r[1]} for r in rows]}
-class RichiestaRequest(BaseModel):
-    employee_id: int
-    req_date: str
-    shift_name: str
 
+# --- API RICHIESTE SPECIFICHE ---
 @app.post("/api/richieste")
 def add_richiesta(req: RichiestaRequest):
     conn = sqlite3.connect('turni.db')
@@ -158,7 +161,12 @@ def generate_schedule(request: ScheduleRequest):
     
     c.execute("SELECT employee_id, iso_week FROM ferie WHERE year=?", (request.year,))
     db_ferie_raw = c.fetchall()
-    conn.close()
+    
+    c.execute("SELECT employee_id, req_date, shift_name FROM richieste")
+    db_richieste_raw = c.fetchall()
+    
+    # ERRORE 1 CORRETTO: Spostata la chiusura alla fine di tutte le letture
+    conn.close() 
     
     weekends_data = {}
     for emp_id, wk in db_weekends:
@@ -171,10 +179,6 @@ def generate_schedule(request: ScheduleRequest):
         if wk not in ferie_data:
             ferie_data[wk] = []
         ferie_data[wk].append(emp_id)
-            # ... (sotto la lettura di ferie e weekend)
-    c.execute("SELECT employee_id, req_date, shift_name FROM richieste")
-    db_richieste_raw = c.fetchall()
-    conn.close()
 
     richieste_data = {}
     for emp_id, req_date, shift_name in db_richieste_raw:
@@ -189,7 +193,7 @@ def generate_schedule(request: ScheduleRequest):
         target_weeks=request.target_weeks,
         db_weekends=weekends_data, 
         db_ferie=ferie_data,
-        db_richieste=richieste_data # <--- AGGIUNTA
+        db_richieste=richieste_data
     )
     
     if not schedule:
