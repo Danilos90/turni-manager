@@ -113,7 +113,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 prev_sab = prev_weekend_shifts[e].get('SAB', -1)
                 prev_dom = prev_weekend_shifts[e].get('DOM', -1)
                 
-                # Evita di fare lo stesso turno del weekend scorso (ignorando ferie/riposi)
+                # Evita di fare lo stesso turno del weekend scorso
                 if prev_sab > 0 and prev_sab != SHIFTS["FERIE"]:
                     obj_terms.append(works[(e, SAB, prev_sab)] * -10000)
                 if prev_dom > 0 and prev_dom != SHIFTS["FERIE"]:
@@ -121,16 +121,20 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 
                 # IL PONTE DEL RIPOSO: Se ha riposato Domenica, FORZA il riposo di Lunedì
                 if prev_dom == SHIFTS["RIPOSO"]:
-                    # Premio colossale per assegnare il riposo di Lunedì (+50.000 punti)
                     obj_terms.append(works[(e, LUN, SHIFTS["RIPOSO"])] * 50000)
+                    
+                # DIVIETO DOMENICA-LUNEDÌ: Se domenica scorsa ha finito alle 20:00 o alle 21:00, NON può riposare Lunedì
+                if prev_dom in [SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"], SHIFTS["CENTRALE_1100"]]:
+                    model.Add(works[(e, LUN, SHIFTS["RIPOSO"])] == 0)
 
             # ---------------------------------------------------------
-            # 1. DIVIETO ASSOLUTO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
+            # 1. DIVIETO ASSOLUTO CHIUSURE E TURNI TARDIVI PRE-RIPOSO (HARD CONSTRAINT)
             # ---------------------------------------------------------
             for d in range(6): 
                 off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
                 model.Add(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] + off_tomorrow <= 1)
                 model.Add(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] + off_tomorrow <= 1)
+                model.Add(works[(e, d, SHIFTS["CENTRALE_1100"])] + off_tomorrow <= 1)
 
             # ---------------------------------------------------------
             # RICHIESTE SPECIFICHE (PREFERENZIALI ASSOLUTE)
