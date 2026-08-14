@@ -215,6 +215,10 @@ def generate_schedule(request: ScheduleRequest):
     c.execute("SELECT employee_id, req_date, shift_name FROM richieste")
     db_richieste_raw = c.fetchall()
     
+    # LEGGE LA MEMORIA STORICA DEI TURNI GIÀ SALVATI
+    c.execute("SELECT date_str, employee_id, shift_name FROM turni_generati")
+    db_saved_raw = c.fetchall()
+    
     conn.close() 
     
     weekends_data = {}
@@ -237,12 +241,16 @@ def generate_schedule(request: ScheduleRequest):
         shift_id = {"Riposo": 0, "Apertura": 1, "Centrale_1030": 2, "Centrale_1100": 3, "Chiusura_Lunga": 4, "Chiusura_Corta": 5}.get(shift_name, 0)
         richieste_data[emp_id][req_date] = shift_id
 
+    # Formatta la memoria storica per il solver
+    saved_schedule = [{"date": r[0], "employee_id": r[1], "shift": r[2]} for r in db_saved_raw]
+
     schedule = generate_weeks_schedule(
         year=request.year,
         target_weeks=request.target_weeks,
         db_weekends=weekends_data, 
         db_ferie=ferie_data,
-        db_richieste=richieste_data
+        db_richieste=richieste_data,
+        db_saved_schedule=saved_schedule # Passa la memoria al motore!
     )
     
     if not schedule:
