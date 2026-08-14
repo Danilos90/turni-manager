@@ -57,6 +57,22 @@
             <input type="number" id="db-week" placeholder="Num. Settimana (es. 34)" min="1" max="52" style="width: 180px;">
             <button type="button" onclick="aggiungiAlDB()">Aggiungi Regola</button>
         </div>
+    <div class="panel">
+        <h3>Richieste Turni / Riposi Specifici</h3>
+        <div class="db-form">
+            <input type="date" id="req-date">
+            <select id="req-dipendente">
+                <!-- Riempi in JS come gli altri -->
+            </select>
+            <select id="req-turno">
+                <option value="Riposo">Giorno di Riposo</option>
+                <option value="Apertura">Apertura (09:30)</option>
+                <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option>
+                <option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
+            </select>
+            <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
+        </div>
+    </div>
 
         <div class="db-list">
             <div class="db-column">
