@@ -19,10 +19,10 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# CREDENZIALI TURSO (Inserisci le tue chiavi qui!)
+# CREDENZIALI TURSO (Inserite per il database Cloud Permanente)
 # ---------------------------------------------------------
-TURSO_URL = "INSERISCI_QUI_IL_TUO_URL_DI_TURSO"      # es: libsql://db-name-user.turso.io
-TURSO_TOKEN = "INSERISCI_QUI_IL_TUO_TOKEN_DI_TURSO"  # es: eyJhbGciOi...
+TURSO_URL = "libsql://turni-db-danilos90.aws-us-east-1.turso.io"
+TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODY4ODc3MzEsImlkIjoiMDFhMDBhY2MtZGMwMS03NzQ3LThlOTMtYWFiNzQ1Mjc2YTM3Iiwia2lkIjoidnREaG5meDJ1VW5XYzNTNkxCTlNHdWhDNVFQZ0R6dTFQSDM5SHhZbTV1MCIsInJpZCI6ImQ4M2I4MmU1LThjMmEtNGI1NS05ZTA1LTliNmJkNTA4YjIzYSJ9.GY_p0uColc7rjxfCAzLZhWLbpMCSZ025vGau7NmjOg3zWx-uLxiSpa35EVrB6hNYFf1tZ191NTh0-CanjmS4Bw"
 
 def get_db_connection():
     return libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
@@ -240,7 +240,7 @@ def generate_schedule(request: ScheduleRequest):
         db_weekends=weekends_data, 
         db_ferie=ferie_data,
         db_richieste=richieste_data,
-        db_saved_schedule=saved_schedule
+        db_saved_schedule=saved_schedule 
     )
     
     if not schedule:
