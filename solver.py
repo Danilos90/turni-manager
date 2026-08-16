@@ -90,11 +90,19 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             else:
                 model.Add(rest_pattern_vars[(e, "SAB_DOM")] == 0)
 
-            # REGOLE DEL WEEKEND
-            for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
-                model.Add(works[(e, SAB, s_id)] + works[(e, DOM, s_id)] <= 1)
+            # ---------------------------------------------------------
+            # REGOLA REGOLA PONTE PRE-WEEKEND OFF (SEIMANALE PRECEDENTE)
+            # ---------------------------------------------------------
+            if e in weekend_off_next and e not in db_weekend_employees:
+                # Forza la scelta esclusiva tra GIO_VEN e LUN_VEN (Venerdì di riposo)
+                model.Add(rest_pattern_vars[(e, "GIO_VEN")] + rest_pattern_vars[(e, "LUN_VEN")] == 1)
+                # Prima scelta: GIO_VEN (+10.000), Seconda scelta: LUN_VEN (+5.000)
+                obj_terms.append(rest_pattern_vars[(e, "GIO_VEN")] * 10000)
+                obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 5000)
 
+            # ---------------------------------------------------------
             # PONTI E MEMORIA DEL WEEKEND PRECEDENTE
+            # ---------------------------------------------------------
             if e in prev_weekend_shifts:
                 prev_sab = prev_weekend_shifts[e].get('SAB', -1)
                 prev_dom = prev_weekend_shifts[e].get('DOM', -1)
@@ -104,11 +112,17 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 if prev_dom > 0 and prev_dom != SHIFTS["FERIE"]:
                     obj_terms.append(works[(e, DOM, prev_dom)] * -10000)
                 
+                # Chi rientra da un Sab-Dom libero preferisce il Lunedì libero (Ponte Post-Weekend)
                 if prev_dom == SHIFTS["RIPOSO"]:
-                    obj_terms.append(works[(e, LUN, SHIFTS["RIPOSO"])] * 1500)
+                    obj_terms.append(rest_pattern_vars[(e, "LUN_GIO")] * 3000)
+                    obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 3000)
                     
                 if prev_dom in [SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"], SHIFTS["CENTRALE_1100"]]:
                     model.Add(works[(e, LUN, SHIFTS["RIPOSO"])] == 0)
+
+            # REGOLE DEL WEEKEND
+            for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
+                model.Add(works[(e, SAB, s_id)] + works[(e, DOM, s_id)] <= 1)
 
             # DIVIETO CHIUSURE PRE-RIPOSO
             for d in range(6): 
