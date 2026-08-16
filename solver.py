@@ -53,16 +53,11 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
 
     active_employees = [e for e in EMPLOYEES if e not in ferie_this_week]
     db_weekend_employees = [e for e in active_employees if e in weekend_off_this]
+    weekday_active_employees = [e for e in active_employees if e not in db_weekend_employees]
 
     # PREMIO DIVERSITÀ PATTERN
     for p_name in ["LUN_GIO", "LUN_VEN", "MAR_MER", "GIO_VEN"]:
         count_p = sum(rest_pattern_vars[(emp, p_name)] for emp in active_employees)
-        
-        is_used = model.NewBoolVar(f'used_{p_name}')
-        model.Add(count_p >= 1).OnlyEnforceIf(is_used)
-        model.Add(count_p == 0).OnlyEnforceIf(is_used.Not())
-        
-        obj_terms.append(is_used * 500)
         model.Add(count_p <= 3)
 
     for e in EMPLOYEES:
@@ -95,30 +90,11 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             else:
                 model.Add(rest_pattern_vars[(e, "SAB_DOM")] == 0)
 
-            # ---------------------------------------------------------
             # REGOLE DEL WEEKEND
-            # ---------------------------------------------------------
-            late_weekend_shifts = [
-                works[(e, SAB, SHIFTS["CENTRALE_1100"])],
-                works[(e, SAB, SHIFTS["CHIUSURA_LUNGA"])],
-                works[(e, SAB, SHIFTS["CHIUSURA_CORTA"])],
-                works[(e, DOM, SHIFTS["CENTRALE_1100"])],
-                works[(e, DOM, SHIFTS["CHIUSURA_LUNGA"])],
-                works[(e, DOM, SHIFTS["CHIUSURA_CORTA"])]
-            ]
-            
-            weekend_workers_count = len(active_employees) - len(db_weekend_employees)
-            if weekend_workers_count >= 5:
-                model.Add(sum(late_weekend_shifts) <= 1)
-            else:
-                model.Add(sum(late_weekend_shifts) <= 2)
-
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
                 model.Add(works[(e, SAB, s_id)] + works[(e, DOM, s_id)] <= 1)
 
-            # ---------------------------------------------------------
             # PONTI E MEMORIA DEL WEEKEND PRECEDENTE
-            # ---------------------------------------------------------
             if e in prev_weekend_shifts:
                 prev_sab = prev_weekend_shifts[e].get('SAB', -1)
                 prev_dom = prev_weekend_shifts[e].get('DOM', -1)
@@ -134,27 +110,21 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 if prev_dom in [SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"], SHIFTS["CENTRALE_1100"]]:
                     model.Add(works[(e, LUN, SHIFTS["RIPOSO"])] == 0)
 
-            # ---------------------------------------------------------
-            # DIVIETO CHIUSURE PRE-RIPOSO (HARD CONSTRAINT)
-            # ---------------------------------------------------------
+            # DIVIETO CHIUSURE PRE-RIPOSO
             for d in range(6): 
                 off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
                 model.Add(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] + off_tomorrow <= 1)
                 model.Add(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] + off_tomorrow <= 1)
                 model.Add(works[(e, d, SHIFTS["CENTRALE_1100"])] + off_tomorrow <= 1)
 
-            # ---------------------------------------------------------
             # RICHIESTE SPECIFICHE
-            # ---------------------------------------------------------
             for d in DAYS:
                 d_str = week_dates[d].strftime("%Y-%m-%d")
                 if e in db_richieste and d_str in db_richieste[e]:
                     req_shift = db_richieste[e][d_str]
                     obj_terms.append(works[(e, d, req_shift)] * 100000)
 
-            # ---------------------------------------------------------
-            # EQUILIBRIO MENSILE STORICO (CON TIE-BREAKER)
-            # ---------------------------------------------------------
+            # EQUILIBRIO MENSILE STORICO
             for s_id in [SHIFTS["APERTURA"], SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
                 for d in DAYS:
                     obj_terms.append(works[(e, d, s_id)] * (-30 * history_shifts[e][s_id]))
@@ -166,9 +136,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 tie_breaker = random.randint(1, 10)
                 obj_terms.append(rest_pattern_vars[(e, p_name)] * (tie_breaker - 80 * history_patterns[e][p_name]))
 
-            # ---------------------------------------------------------
-            # PROFILI MATEMATICI SETTIMANALI RIGIDI E EQUILIBRATI
-            # ---------------------------------------------------------
+            # PROFILI SETTIMANALI DIPENDENTI
             ap_e = sum(works[(e, d, SHIFTS["APERTURA"])] for d in DAYS)
             cc_e = sum(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] for d in DAYS)
             cl_e = sum(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] for d in DAYS)
@@ -180,29 +148,19 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 is_ap1 = model.NewBoolVar(f'is_ap1_{e}')
                 model.AddExactlyOne([is_ap1, is_ap2])
 
-                # PROFILO A (2 Aperture, 1 Chiusura Corta, 1 Chiusura Lunga, 1 C1030, 0 C1100)
+                # PROFILO A (2 AP, 1 CC, 1 CL, 1 C1030, 0 C1100)
                 model.Add(ap_e == 2).OnlyEnforceIf(is_ap2)
                 model.Add(cc_e == 1).OnlyEnforceIf(is_ap2)
                 model.Add(cl_e == 1).OnlyEnforceIf(is_ap2)
                 model.Add(c1030_e == 1).OnlyEnforceIf(is_ap2)
                 model.Add(c1100_e == 0).OnlyEnforceIf(is_ap2)
 
-                # PROFILO B (1 Apertura, 1 Chiusura Corta, 0 Chiusure Lunghe, 1 C1030, 2 C1100)
+                # PROFILO B (1 AP, 1 CC, 0 CL, 1 C1030, 2 C1100)
                 model.Add(ap_e == 1).OnlyEnforceIf(is_ap1)
                 model.Add(cc_e == 1).OnlyEnforceIf(is_ap1)
                 model.Add(cl_e == 0).OnlyEnforceIf(is_ap1)
                 model.Add(c1030_e == 1).OnlyEnforceIf(is_ap1)
                 model.Add(c1100_e == 2).OnlyEnforceIf(is_ap1)
-            else:
-                # Flessibilità per periodi con ferie massive (< 7 persone)
-                model.Add(cc_e == 1)
-                model.Add(ap_e >= 1)
-                model.Add(ap_e <= 3)
-                model.Add(cl_e <= 2)
-
-            if e in weekend_off_next and e not in db_weekend_employees:
-                obj_terms.append(rest_pattern_vars[(e, "GIO_VEN")] * 2000)
-                obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 2000)
 
     # ---------------------------------------------------------
     # STRUTTURA GIORNALIERA DEL NEGOZIO
@@ -223,56 +181,33 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
         model.Add(cc + cl == 2)
         model.Add(c1030 + c1100 == daily_w - 4) 
 
-        is_6_or_more = model.NewBoolVar(f'is_6_or_more_d{d}')
-        model.Add(daily_w >= 6).OnlyEnforceIf(is_6_or_more)
-        model.Add(daily_w < 6).OnlyEnforceIf(is_6_or_more.Not())
-        
-        model.Add(c1030 >= 1).OnlyEnforceIf(is_6_or_more)
-        
-        # Garanzia C1100 solo se c'è personale disponibile per il Profilo B
-        if len(active_employees) >= 8:
-            model.Add(c1100 >= 1).OnlyEnforceIf(is_6_or_more)
-
         if d in [LUN, GIO, VEN, SAB, DOM]:
             model.Add(cc == 1)
             model.Add(cl == 1)
+
+    # ---------------------------------------------------------
+    # DIVISIONE EUCLIDEA RIGIDA DEI RIPOSI FERIALI
+    # ---------------------------------------------------------
+    n_feriali = len(weekday_active_employees)
+    total_rests = 2 * n_feriali
+
+    q = total_rests // 5  # Quoziente (riposi base per giorno)
+    r = total_rests % 5   # Resto (giorni che prendono +1 riposo)
+
+    num_days_heavy = 5 - r  # Giorni con meno riposi (più lavoratori)
+    feriali_days = [LUN, MAR, MER, GIO, VEN]
+
+    for idx, d in enumerate(feriali_days):
+        d_rests = sum(works[(e, d, SHIFTS["RIPOSO"])] for e in weekday_active_employees)
+        if idx < num_days_heavy:
+            model.Add(d_rests == q)
         else:
-            if len(active_employees) >= 7:
-                model.Add(cc >= 1)
-                model.Add(cc <= 2)
-
-    # ---------------------------------------------------------
-    # EQUILIBRIO MATEMATICO DINAMICO DEI GIORNI FERIALI
-    # ---------------------------------------------------------
-    active_count = len(active_employees)
-    weekend_off_count = len(db_weekend_employees)
-    
-    total_weekday_rests = 2 * (active_count - weekend_off_count)
-    base_rests = total_weekday_rests // 5
-    extra_rests = total_weekday_rests % 5
-    
-    min_rests = max(0, base_rests - 1)
-    max_rests = min(active_count, base_rests + (1 if extra_rests > 0 else 0) + 1)
-        
-    min_workers_weekday = max(4, active_count - max_rests)
-    max_workers_weekday = max(min_workers_weekday, active_count - min_rests)
-
-    for d in [LUN, MAR, MER, GIO, VEN]:
-        model.Add(daily_workers_var[d] >= min_workers_weekday)
-        model.Add(daily_workers_var[d] <= max_workers_weekday)
-
-    model.Add(daily_workers_var[LUN] >= daily_workers_var[GIO])
-    model.Add(daily_workers_var[LUN] >= daily_workers_var[VEN])
-    model.Add(daily_workers_var[MAR] >= daily_workers_var[GIO])
-    model.Add(daily_workers_var[MAR] >= daily_workers_var[VEN])
-    model.Add(daily_workers_var[MER] >= daily_workers_var[GIO])
-    model.Add(daily_workers_var[MER] >= daily_workers_var[VEN])
+            model.Add(d_rests == q + 1)
 
     model.Maximize(sum(obj_terms) if obj_terms else 0)
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 8.0 
-    
     solver.parameters.randomize_search = True
     solver.parameters.random_seed = random.randint(1, 10000)
     
