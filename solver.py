@@ -119,11 +119,11 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     obj_terms.append(rest_pattern_vars[(e, "LUN_GIO")] * 3000)
                     obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 3000)
 
-            # DIVIETO CHIUSURE PRE-RIPOSO (SOLO CHIUSURE FINO ALLE 21:00)
+            # DIVIETO TURNI TARDI PRE-RIPOSO (Massimo orario consentito: 10:30)
             for d in range(6): 
                 off_tomorrow = works[(e, d+1, SHIFTS["RIPOSO"])] + works[(e, d+1, SHIFTS["FERIE"])]
-                model.Add(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] + off_tomorrow <= 1)
-                model.Add(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] + off_tomorrow <= 1)
+                for s_forbidden in [SHIFTS["CENTRALE_1100"], SHIFTS["CENTRALE_1130"], SHIFTS["CHIUSURA_LUNGA"], SHIFTS["CHIUSURA_CORTA"]]:
+                    model.Add(works[(e, d, s_forbidden)] + off_tomorrow <= 1)
 
             # RICHIESTE SPECIFICHE
             for d in DAYS:
@@ -186,7 +186,6 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
         model.Add(aperture == 2)
         model.Add(cc + cl == 2)
 
-        # VARIABILI CONDIZIONALI BI-DIREZIONALI PER PRESIDIO
         is_4 = model.NewBoolVar(f'is_4_d{d}')
         is_5 = model.NewBoolVar(f'is_5_d{d}')
         is_6 = model.NewBoolVar(f'is_6_d{d}')
@@ -240,11 +239,9 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
         model.Add(c1130 == 1).OnlyEnforceIf(is_7)
 
         if d in [MAR, MER]:
-            # Martedì e Mercoledì con 7 lavoratori: 2x 15:00 (CC), 0x 12:00 (CL)
             model.Add(cl == 0).OnlyEnforceIf(is_7)
             model.Add(cc == 2).OnlyEnforceIf(is_7)
         else:
-            # Lunedì e altri giorni con 7 lavoratori: 1x 12:00 (CL), 1x 15:00 (CC)
             model.Add(cl == 1).OnlyEnforceIf(is_7)
             model.Add(cc == 1).OnlyEnforceIf(is_7)
 
