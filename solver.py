@@ -106,7 +106,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             for s_id in [1, 2, 3, 4, 5, 8, 9]:
                 model.Add(works[(e, SAB, s_id)] + works[(e, DOM, s_id)] <= 1)
 
-            # PONTE PRE-WEEKEND LIBERO (OBBLIGO VENERDÌ LIBERO: GIO_VEN O LUN_VEN)
+            # PONTE PRE-WEEKEND LIBERO
             if e in weekend_off_next and e not in db_weekend_employees:
                 model.Add(rest_pattern_vars[(e, "GIO_VEN")] + rest_pattern_vars[(e, "LUN_VEN")] == 1)
                 obj_terms.append(rest_pattern_vars[(e, "GIO_VEN")] * 10000)
@@ -152,7 +152,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 model.Add(cc_e == 1)
                 model.Add(cl_e == 1)
             elif len(active_employees) >= 8:
-                model.Add(cc_e == 1)
+                model.Add(cc_e <= 1)
                 model.Add(ap_e >= 1)
                 model.Add(ap_e <= 2)
                 model.Add(cl_e <= 1)
@@ -233,13 +233,20 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             model.Add(cl == 1).OnlyEnforceIf(is_6)
             model.Add(cc == 1).OnlyEnforceIf(is_6)
 
-        # Presidio 7 Lavoratori (2 AP, 1 C1000, 1 C1030, 0 C1100, 1 C1130, 1 CL, 1 CC)
+        # Presidio 7 Lavoratori
         model.Add(c1000 == 1).OnlyEnforceIf(is_7)
         model.Add(c1030 == 1).OnlyEnforceIf(is_7)
         model.Add(c1100 == 0).OnlyEnforceIf(is_7)
         model.Add(c1130 == 1).OnlyEnforceIf(is_7)
-        model.Add(cl == 1).OnlyEnforceIf(is_7)
-        model.Add(cc == 1).OnlyEnforceIf(is_7)
+
+        if d in [MAR, MER]:
+            # Martedì e Mercoledì con 7 lavoratori: 2x 15:00 (CC), 0x 12:00 (CL)
+            model.Add(cl == 0).OnlyEnforceIf(is_7)
+            model.Add(cc == 2).OnlyEnforceIf(is_7)
+        else:
+            # Lunedì e altri giorni con 7 lavoratori: 1x 12:00 (CL), 1x 15:00 (CC)
+            model.Add(cl == 1).OnlyEnforceIf(is_7)
+            model.Add(cc == 1).OnlyEnforceIf(is_7)
 
     # ---------------------------------------------------------
     # DIVISIONE EUCLIDEA RIPOSI FERIALI
