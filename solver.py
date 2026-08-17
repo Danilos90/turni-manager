@@ -16,12 +16,14 @@ REST_PATTERNS = {
 
 SHIFTS = {
     "RIPOSO": 0,
-    "APERTURA": 1,        # 09:30 13:00 14:00 18:30
-    "CENTRALE_1030": 2,   # 10:30 13:00 14:00 19:30
-    "CENTRALE_1100": 3,   # 11:00 14:30 15:30 20:00
-    "CHIUSURA_LUNGA": 4,  # 12:00 14:30 15:30 21:00
-    "CHIUSURA_CORTA": 5,  # 15:00 21:00
-    "FERIE": 7
+    "APERTURA": 1,          # 09:30 13:00 14:00 18:30
+    "CENTRALE_1030": 2,     # 10:30 13:00 14:00 19:30
+    "CENTRALE_1100": 3,     # 11:00 14:30 15:30 20:00
+    "CHIUSURA_LUNGA": 4,    # 12:00 14:30 15:30 21:00
+    "CHIUSURA_CORTA": 5,    # 15:00 21:00
+    "FERIE": 7,
+    "CENTRALE_1000": 8,     # 10:00 13:00 14:00 19:00
+    "CENTRALE_1130": 9      # 11:30 14:30 15:30 20:30
 }
 SHIFT_IDS = list(SHIFTS.values())
 
@@ -32,7 +34,9 @@ SHIFT_NAMES_REVERSE = {
     3: "11:00 14:30 15:30 20:00",
     4: "12:00 14:30 15:30 21:00",
     5: "15:00 21:00",
-    7: "Ferie"
+    7: "Ferie",
+    8: "10:00 13:00 14:00 19:00",
+    9: "11:30 14:30 15:30 20:30"
 }
 
 def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week, 
@@ -89,15 +93,17 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             # DIVIETO DOPPIO TURNO TARDO NEL WEEKEND (SAB & DOM)
             late_shifts_sab_dom = [
                 works[(e, SAB, SHIFTS["CENTRALE_1100"])],
+                works[(e, SAB, SHIFTS["CENTRALE_1130"])],
                 works[(e, SAB, SHIFTS["CHIUSURA_LUNGA"])],
                 works[(e, SAB, SHIFTS["CHIUSURA_CORTA"])],
                 works[(e, DOM, SHIFTS["CENTRALE_1100"])],
+                works[(e, DOM, SHIFTS["CENTRALE_1130"])],
                 works[(e, DOM, SHIFTS["CHIUSURA_LUNGA"])],
                 works[(e, DOM, SHIFTS["CHIUSURA_CORTA"])]
             ]
             model.Add(sum(late_shifts_sab_dom) <= 1)
 
-            for s_id in [1, 2, 3, 4, 5]:
+            for s_id in [1, 2, 3, 4, 5, 8, 9]:
                 model.Add(works[(e, SAB, s_id)] + works[(e, DOM, s_id)] <= 1)
 
             # PONTE PRE-WEEKEND LIBERO (OBBLIGO VENERDÌ LIBERO: GIO_VEN O LUN_VEN)
@@ -105,6 +111,13 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 model.Add(rest_pattern_vars[(e, "GIO_VEN")] + rest_pattern_vars[(e, "LUN_VEN")] == 1)
                 obj_terms.append(rest_pattern_vars[(e, "GIO_VEN")] * 10000)
                 obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 5000)
+
+            # PONTE POST-WEEKEND LIBERO
+            if e in prev_weekend_shifts:
+                prev_dom = prev_weekend_shifts[e].get('DOM', -1)
+                if prev_dom == SHIFTS["RIPOSO"]:
+                    obj_terms.append(rest_pattern_vars[(e, "LUN_GIO")] * 3000)
+                    obj_terms.append(rest_pattern_vars[(e, "LUN_VEN")] * 3000)
 
             # DIVIETO CHIUSURE PRE-RIPOSO (SOLO CHIUSURE FINO ALLE 21:00)
             for d in range(6): 
@@ -120,7 +133,7 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                     obj_terms.append(works[(e, d, req_shift)] * 100000)
 
             # EQUILIBRIO MENSILE STORICO
-            for s_id in [1, 2, 3, 4, 5]:
+            for s_id in [1, 2, 3, 4, 5, 8, 9]:
                 for d in DAYS:
                     obj_terms.append(works[(e, d, s_id)] * (-30 * history_shifts[e][s_id]))
                 obj_terms.append(works[(e, SAB, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
@@ -135,35 +148,49 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
             cl_e = sum(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] for d in DAYS)
 
             if len(active_employees) == 7:
-                # Con 7 attivi: 2 AP, 1 CC, 1 CL, 1 C1030 a testa
                 model.Add(ap_e == 2)
                 model.Add(cc_e == 1)
                 model.Add(cl_e == 1)
             elif len(active_employees) >= 8:
-                # Con 8 attivi: 1 CC a testa, 1-2 AP, 0-1 CL
                 model.Add(cc_e == 1)
                 model.Add(ap_e >= 1)
                 model.Add(ap_e <= 2)
                 model.Add(cl_e <= 1)
 
+            # PENALIZZAZIONE RIPETIZIONE DELLO STESSO TURNO CENTRALE (>= 3 VOLTE NELLA SETTIMANA)
+            for s_id in [SHIFTS["CENTRALE_1030"], SHIFTS["CENTRALE_1100"], SHIFTS["CENTRALE_1000"], SHIFTS["CENTRALE_1130"]]:
+                shift_count_in_week = sum(works[(e, d, s_id)] for d in DAYS)
+                is_3_or_more = model.NewBoolVar(f'is_3_more_{e}_{s_id}')
+                model.Add(shift_count_in_week >= 3).OnlyEnforceIf(is_3_or_more)
+                model.Add(shift_count_in_week < 3).OnlyEnforceIf(is_3_or_more.Not())
+                obj_terms.append(is_3_or_more * -5000)
+
     # ---------------------------------------------------------
-    # COMPOSIZIONE RIGIDA GIORNALIERA DEL NEGOZIO
+    # COMPOSIZIONE RIGIDA GIORNALIERA CON GUARDIE GLOBALI
     # ---------------------------------------------------------
     daily_workers_var = {}
     for d in DAYS:
-        daily_w = sum(works[(e, d, s)] for e in EMPLOYEES for s in [1, 2, 3, 4, 5])
+        daily_w = sum(works[(e, d, s)] for e in EMPLOYEES for s in [1, 2, 3, 4, 5, 8, 9])
         daily_workers_var[d] = model.NewIntVar(0, NUM_EMPLOYEES, f'dw_{d}')
         model.Add(daily_workers_var[d] == daily_w)
 
         aperture = sum(works[(e, d, SHIFTS["APERTURA"])] for e in EMPLOYEES)
         cc = sum(works[(e, d, SHIFTS["CHIUSURA_CORTA"])] for e in EMPLOYEES)
         cl = sum(works[(e, d, SHIFTS["CHIUSURA_LUNGA"])] for e in EMPLOYEES)
+        c1000 = sum(works[(e, d, SHIFTS["CENTRALE_1000"])] for e in EMPLOYEES)
         c1030 = sum(works[(e, d, SHIFTS["CENTRALE_1030"])] for e in EMPLOYEES)
         c1100 = sum(works[(e, d, SHIFTS["CENTRALE_1100"])] for e in EMPLOYEES)
+        c1130 = sum(works[(e, d, SHIFTS["CENTRALE_1130"])] for e in EMPLOYEES)
 
+        # GUARDIE GLOBALI INVIOLABILI (Mai un giorno senza 09:30 o 21:00)
+        model.Add(aperture == 2)
+        model.Add(cc + cl == 2)
+
+        # VARIABILI CONDIZIONALI BI-DIREZIONALI PER PRESIDIO
         is_4 = model.NewBoolVar(f'is_4_d{d}')
         is_5 = model.NewBoolVar(f'is_5_d{d}')
         is_6 = model.NewBoolVar(f'is_6_d{d}')
+        is_7 = model.NewBoolVar(f'is_7_d{d}')
 
         model.Add(daily_w == 4).OnlyEnforceIf(is_4)
         model.Add(daily_w != 4).OnlyEnforceIf(is_4.Not())
@@ -174,32 +201,45 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
         model.Add(daily_w == 6).OnlyEnforceIf(is_6)
         model.Add(daily_w != 6).OnlyEnforceIf(is_6.Not())
 
-        # Presidio 4 Lavoratori: 2 AP, 0 C1030, 0 C1100, 1 CL, 1 CC
-        model.Add(aperture == 2).OnlyEnforceIf(is_4)
+        model.Add(daily_w == 7).OnlyEnforceIf(is_7)
+        model.Add(daily_w != 7).OnlyEnforceIf(is_7.Not())
+
+        # Presidio 4 Lavoratori (2 AP, 0 Centrali, 1 CL, 1 CC)
+        model.Add(c1000 == 0).OnlyEnforceIf(is_4)
         model.Add(c1030 == 0).OnlyEnforceIf(is_4)
         model.Add(c1100 == 0).OnlyEnforceIf(is_4)
+        model.Add(c1130 == 0).OnlyEnforceIf(is_4)
         model.Add(cl == 1).OnlyEnforceIf(is_4)
         model.Add(cc == 1).OnlyEnforceIf(is_4)
 
-        # Presidio 5 Lavoratori: 2 AP, 1 C1030, 0 C1100, 1 CL, 1 CC
-        model.Add(aperture == 2).OnlyEnforceIf(is_5)
+        # Presidio 5 Lavoratori (2 AP, 1 C1030, 0 Altre Centrali, 1 CL, 1 CC)
+        model.Add(c1000 == 0).OnlyEnforceIf(is_5)
         model.Add(c1030 == 1).OnlyEnforceIf(is_5)
         model.Add(c1100 == 0).OnlyEnforceIf(is_5)
+        model.Add(c1130 == 0).OnlyEnforceIf(is_5)
         model.Add(cl == 1).OnlyEnforceIf(is_5)
         model.Add(cc == 1).OnlyEnforceIf(is_5)
 
-        # Presidio 6 Lavoratori: 2 AP, 1 C1030, 1 C1100, 1 CL, 1 CC (o 0 CL e 2 CC se Martedì/Mercoledì)
-        model.Add(aperture == 2).OnlyEnforceIf(is_6)
+        # Presidio 6 Lavoratori (2 AP, 1 C1030, 1 C1100, 0 C1000/C1130)
+        model.Add(c1000 == 0).OnlyEnforceIf(is_6)
         model.Add(c1030 == 1).OnlyEnforceIf(is_6)
         model.Add(c1100 == 1).OnlyEnforceIf(is_6)
+        model.Add(c1130 == 0).OnlyEnforceIf(is_6)
 
         if d in [MAR, MER]:
-            model.Add(cc + cl == 2).OnlyEnforceIf(is_6)
             model.Add(cc >= 1).OnlyEnforceIf(is_6)
             model.Add(cc <= 2).OnlyEnforceIf(is_6)
         else:
             model.Add(cl == 1).OnlyEnforceIf(is_6)
             model.Add(cc == 1).OnlyEnforceIf(is_6)
+
+        # Presidio 7 Lavoratori (2 AP, 1 C1000, 1 C1030, 0 C1100, 1 C1130, 1 CL, 1 CC)
+        model.Add(c1000 == 1).OnlyEnforceIf(is_7)
+        model.Add(c1030 == 1).OnlyEnforceIf(is_7)
+        model.Add(c1100 == 0).OnlyEnforceIf(is_7)
+        model.Add(c1130 == 1).OnlyEnforceIf(is_7)
+        model.Add(cl == 1).OnlyEnforceIf(is_7)
+        model.Add(cc == 1).OnlyEnforceIf(is_7)
 
     # ---------------------------------------------------------
     # DIVISIONE EUCLIDEA RIPOSI FERIALI
