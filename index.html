@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generatore Turni</title>
+    <!-- Libreria Chart.js per la Dashboard di Equità -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
         .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -32,13 +34,24 @@
         .loading { display: none; font-weight: bold; color: #f39c12; margin-top: 10px; text-align: center; font-size: 18px;}
         
         table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; }
-        th, td { border: 1px solid #ddd; padding: 10px; }
+        th, td { border: 1px solid #ddd; padding: 6px; }
         th { background-color: #1a2b4c; color: white; }
         .week-header { background-color: #2c3e50; color: white; text-align: left; padding: 10px; font-weight: bold; font-size: 16px; margin-top: 30px;}
         
-        .turno-riposo { background-color: #e74c3c; color: white; font-weight: bold; }
-        .turno-ferie { background-color: #f1c40f; color: black; font-weight: bold; }
-        .turno-lavoro { background-color: #ecf0f1; }
+        /* Stili per i menu a tendina modifcabili nella griglia */
+        select.shift-select {
+            width: 100%;
+            padding: 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: bold;
+            border: 1px solid #ccc;
+            text-align: center;
+            cursor: pointer;
+        }
+        .turno-riposo-select { background-color: #e74c3c; color: white; }
+        .turno-ferie-select { background-color: #f1c40f; color: black; }
+        .turno-lavoro-select { background-color: #ffffff; color: #333; }
     </style>
 </head>
 <body>
@@ -120,6 +133,14 @@
         <div class="checkbox-group" id="checkbox-group"></div>
     </div>
 
+    <!-- QUARTO PANNELLO: DASHBOARD ANALISI EQUITÀ -->
+    <div class="panel">
+        <h3>Analisi Equità Reale (Ultimi 90 Giorni)</h3>
+        <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ccc; height: 350px;">
+            <canvas id="equityChart"></canvas>
+        </div>
+    </div>
+
     <div id="loading" class="loading">Elaborazione in corso (Attendi)... ⏳</div>
     <div id="results"></div>
 </div>
@@ -131,9 +152,21 @@
         7: "Quaranta Antonio", 8: "Scarrone Danilo", 9: "Squeglia Gaetana"
     };
 
+    const SHIFT_OPTIONS = [
+        "Riposo",
+        "09:30 13:00 14:00 18:30",
+        "10:00 13:00 14:00 19:00",
+        "10:30 13:00 14:00 19:30",
+        "11:00 14:30 15:30 20:00",
+        "11:30 14:30 15:30 20:30",
+        "12:00 14:30 15:30 21:00",
+        "15:00 21:00",
+        "Ferie"
+    ];
+
     let db_weekends = {}; 
     let db_ferie = {}; 
-    let ultima_griglia_calcolata = []; // Variabile per la memoria
+    let equityChartInstance = null;
 
     window.onload = function() {
         const selectDip = document.getElementById('db-dipendente');
@@ -151,6 +184,7 @@
             reqDip.appendChild(optReq);
         }
         cambioAnnoMese();
+        loadEquityAnalytics();
     };
 
     function cambioAnnoMese() {
@@ -336,7 +370,6 @@
             document.getElementById('loading').style.display = 'none';
 
             if (result.status === "success") {
-                ultima_griglia_calcolata = result.data;
                 renderTable(result.data, target_weeks);
                 document.getElementById('btn-salva').style.display = 'inline-block';
             } else {
@@ -349,23 +382,34 @@
     }
 
     async function salvaGriglia() {
-        if(ultima_griglia_calcolata.length === 0) {
+        const selects = document.querySelectorAll('.shift-select');
+        if(selects.length === 0) {
             alert("Nessuna griglia da salvare!");
             return;
         }
         
         if(!confirm("Sei sicuro di voler salvare questi turni? Sovrascriveranno eventuali turni già salvati per queste stesse date.")) return;
 
+        let scheduleToSave = [];
+        selects.forEach(sel => {
+            scheduleToSave.push({
+                date: sel.dataset.date,
+                employee_id: parseInt(sel.dataset.emp),
+                shift: sel.value
+            });
+        });
+
         try {
             const response = await fetch('/api/save_schedule', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ schedule: ultima_griglia_calcolata })
+                body: JSON.stringify({ schedule: scheduleToSave })
             });
             const result = await response.json();
             if(result.success) {
                 alert("Griglia salvata nel database permanente!");
                 document.getElementById('btn-salva').style.display = 'none';
+                loadEquityAnalytics(); // Aggiorna il grafico dell'equità dopo il salvataggio
             }
         } catch(e) {
             alert("Errore durante il salvataggio.");
@@ -407,6 +451,18 @@
         }
     }
 
+    function aggiornaColoreSelect(selectElem) {
+        const val = selectElem.value;
+        selectElem.className = "shift-select";
+        if (val === "Riposo") {
+            selectElem.classList.add("turno-riposo-select");
+        } else if (val === "Ferie") {
+            selectElem.classList.add("turno-ferie-select");
+        } else {
+            selectElem.classList.add("turno-lavoro-select");
+        }
+    }
+
     function renderTable(data, weeks) {
         const resultsDiv = document.getElementById('results');
         const orari = {};
@@ -442,13 +498,13 @@
             let tableHTML = `<table>
                 <thead>
                     <tr>
-                        <th>Dipendente</th>`;
+                        <th style="width: 15%;">Dipendente</th>`;
             
             const nomiGiorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
             giorniSettimana.forEach((dataStr, index) => {
                 const dObj = new Date(dataStr);
                 const dataFormat = dObj.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
-                tableHTML += `<th>${nomiGiorni[index]}<br><small>${dataFormat}</small></th>`;
+                tableHTML += `<th style="width: 12.1%;">${nomiGiorni[index]}<br><small>${dataFormat}</small></th>`;
             });
             tableHTML += `</tr></thead><tbody>`;
 
@@ -456,17 +512,94 @@
                 tableHTML += `<tr><td><strong>${dipendenti[empId]}</strong></td>`;
                 
                 giorniSettimana.forEach(dataStr => {
-                    let turno = orari[empId] && orari[empId][dataStr] ? orari[empId][dataStr] : "Errore";
-                    let cssClass = "turno-lavoro";
-                    if(turno === "Riposo") cssClass = "turno-riposo";
-                    if(turno === "Ferie") cssClass = "turno-ferie";
+                    let turno = orari[empId] && orari[empId][dataStr] ? orari[empId][dataStr] : "Riposo";
                     
-                    tableHTML += `<td class="${cssClass}">${turno}</td>`;
+                    let selectClass = "turno-lavoro-select";
+                    if(turno === "Riposo") selectClass = "turno-riposo-select";
+                    if(turno === "Ferie") selectClass = "turno-ferie-select";
+                    
+                    let optionsHTML = '';
+                    SHIFT_OPTIONS.forEach(opt => {
+                        let selected = (opt === turno) ? 'selected' : '';
+                        optionsHTML += `<option value="${opt}" ${selected}>${opt}</option>`;
+                    });
+
+                    tableHTML += `<td>
+                        <select class="shift-select ${selectClass}" data-emp="${empId}" data-date="${dataStr}" onchange="aggiornaColoreSelect(this)">
+                            ${optionsHTML}
+                        </select>
+                    </td>`;
                 });
                 tableHTML += `</tr>`;
             }
             tableHTML += `</tbody></table>`;
             resultsDiv.innerHTML += tableHTML;
+        }
+    }
+
+    async function loadEquityAnalytics() {
+        try {
+            const response = await fetch('/api/analytics/equity');
+            const result = await response.json();
+
+            if (!result.success) return;
+
+            const labels = result.data.map(item => item.name);
+            const dataChiusure = result.data.map(item => item.chiusure);
+            const dataWeekend = result.data.map(item => item.weekend);
+            const dataAperture = result.data.map(item => item.aperture);
+
+            const ctx = document.getElementById('equityChart').getContext('2d');
+
+            if (equityChartInstance) {
+                equityChartInstance.destroy();
+            }
+
+            equityChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Chiusure (21:00)',
+                            data: dataChiusure,
+                            backgroundColor: 'rgba(231, 76, 60, 0.85)',
+                            borderColor: '#c0392b',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Presenze Weekend (Sab/Dom)',
+                            data: dataWeekend,
+                            backgroundColor: 'rgba(243, 156, 18, 0.85)',
+                            borderColor: '#d68910',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Aperture (09:30)',
+                            data: dataAperture,
+                            backgroundColor: 'rgba(52, 152, 219, 0.85)',
+                            borderColor: '#2980b9',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { mode: 'index', intersect: false }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error("Errore nel caricamento delle analisi d'equità:", error);
         }
     }
 </script>
