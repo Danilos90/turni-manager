@@ -1,9 +1,10 @@
+import datetime
+import calendar
+from typing import List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import calendar
-from typing import List
 import libsql_experimental as libsql
 
 from solver import generate_weeks_schedule
@@ -19,10 +20,22 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# CREDENZIALI TURSO (Inserite per il database Cloud Permanente)
+# CREDENZIALI TURSO (Database Cloud Permanente)
 # ---------------------------------------------------------
 TURSO_URL = "libsql://turni-db-danilos90.aws-us-east-1.turso.io"
 TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODY4ODc3MzEsImlkIjoiMDFhMDBhY2MtZGMwMS03NzQ3LThlOTMtYWFiNzQ1Mjc2YTM3Iiwia2lkIjoidnREaG5meDJ1VW5XYzNTNkxCTlNHdWhDNVFQZ0R6dTFQSDM5SHhZbTV1MCIsInJpZCI6ImQ4M2I4MmU1LThjMmEtNGI1NS05ZTA1LTliNmJkNTA4YjIzYSJ9.GY_p0uColc7rjxfCAzLZhWLbpMCSZ025vGau7NmjOg3zWx-uLxiSpa35EVrB6hNYFf1tZ191NTh0-CanjmS4Bw"
+
+EMP_NAMES = {
+    1: "Arena Caterina",
+    2: "De Giacomo Giuseppe",
+    3: "Lucidi Danilo",
+    4: "Marono Alessia",
+    5: "Panariello Luigi",
+    6: "Paracuollo Mario",
+    7: "Quaranta Antonio",
+    8: "Scarrone Danilo",
+    9: "Squeglia Gaetana"
+}
 
 def get_db_connection():
     return libsql.connect(TURSO_URL, auth_token=TURSO_TOKEN)
@@ -193,6 +206,59 @@ def get_schedule():
             "shift": r[2]
         })
     return {"success": True, "data": schedule}
+
+# --- API ANALYTICS EQUITÀ (ULTIMI 90 GIORNI) ---
+@app.get("/api/analytics/equity")
+def get_equity_analytics():
+    conn = get_db_connection()
+    
+    cutoff_date = (datetime.date.today() - datetime.timedelta(days=90)).strftime("%Y-%m-%d")
+    
+    cursor = conn.execute("""
+        SELECT employee_id, date_str, shift_name 
+        FROM turni_generati 
+        WHERE date_str >= ?
+    """, (cutoff_date,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+
+    stats = {
+        emp_id: {
+            "name": EMP_NAMES.get(emp_id, f"Dipendente {emp_id}"),
+            "chiusure": 0,
+            "weekend": 0,
+            "aperture": 0
+        } for emp_id in range(1, 10)
+    }
+
+    for emp_id, date_str, shift_name in rows:
+        if emp_id not in stats:
+            continue
+            
+        if shift_name in ["Riposo", "Ferie"]:
+            continue
+
+        d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        
+        # Conteggio Chiusure (12:00-21:00 e 15:00-21:00)
+        if "21:00" in shift_name:
+            stats[emp_id]["chiusure"] += 1
+            
+        # Conteggio Aperture (09:30)
+        if "09:30" in shift_name:
+            stats[emp_id]["aperture"] += 1
+
+        # Conteggio Weekend (Sabato e Domenica)
+        if d_obj.weekday() in [5, 6]:
+            stats[emp_id]["weekend"] += 1
+
+    return {
+        "success": True,
+        "period_days": 90,
+        "cutoff_date": cutoff_date,
+        "data": list(stats.values())
+    }
 
 # --- GENERAZIONE TURNI ---
 @app.post("/generate")
