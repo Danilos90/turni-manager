@@ -3,14 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generatore Turni</title>
+    <title>Gestione Turni</title>
     <!-- Libreria Chart.js per la Dashboard di Equità -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
         .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { color: #1a2b4c; border-bottom: 2px solid #f39c12; padding-bottom: 10px; }
+        h1 { color: #1a2b4c; margin-bottom: 20px; }
         
+        /* Barra di Navigazione a Schede (Tab) */
+        .nav-tabs { display: flex; gap: 10px; border-bottom: 3px solid #1a2b4c; margin-bottom: 20px; }
+        .tab-btn { background: #eef2f5; color: #1a2b4c; border: 1px solid #dcdde1; border-bottom: none; padding: 12px 20px; font-weight: bold; border-radius: 8px 8px 0 0; cursor: pointer; transition: 0.3s; font-size: 15px; }
+        .tab-btn:hover { background: #dcdde1; }
+        .tab-btn.active { background: #1a2b4c; color: white; border-color: #1a2b4c; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
         .panel { background: #eef2f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #dcdde1; }
         .panel h3 { margin-top: 0; color: #1a2b4c; font-size: 18px; border-bottom: 1px solid #ccc; padding-bottom: 5px;}
         
@@ -57,92 +66,110 @@
 <body>
 
 <div class="container">
-    <h1>Generatore Turni Settimanali</h1>
-    
-    <!-- PRIMO PANNELLO: FERIE E WEEKEND -->
-    <div class="panel">
-        <h3>Gestione Database (Ferie e Riposi Weekend)</h3>
-        <div class="db-form">
-            <select id="db-tipo">
-                <option value="weekend">Riposo Weekend (Sab-Dom)</option>
-                <option value="ferie">Ferie Intera Settimana</option>
-            </select>
-            <select id="db-dipendente"></select>
-            <input type="number" id="db-week" placeholder="Num. Settimana (es. 34)" min="1" max="52" style="width: 180px;">
-            <button type="button" onclick="aggiungiAlDB()">Aggiungi Regola</button>
+    <h1>Piattaforma Gestione Turni</h1>
+
+    <!-- BARRA DI NAVIGAZIONE A SCHEDE -->
+    <div class="nav-tabs">
+        <button class="tab-btn active" id="btn-tab-griglia" onclick="switchTab('griglia')">📅 Griglia Turni</button>
+        <button class="tab-btn" id="btn-tab-db" onclick="switchTab('db')">⚙️ Gestione DB & Ferie</button>
+        <button class="tab-btn" id="btn-tab-analytics" onclick="switchTab('analytics')">📊 Analisi Equità</button>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- PAGINA 1: GENERAZIONE E GRIGLIA TURNI -->
+    <!-- ========================================================= -->
+    <div id="tab-griglia" class="tab-content active">
+        <div class="panel">
+            <h3>Generazione Griglia</h3>
+            <div class="controls">
+                <div>
+                    <label>Anno: </label>
+                    <input type="number" id="year" value="2026" min="2024" max="2030" onchange="cambioAnnoMese()">
+                </div>
+                <div>
+                    <label>Mese: </label>
+                    <select id="month" onchange="generateWeekCheckboxes()">
+                        <option value="1">Gennaio</option>
+                        <option value="2">Febbraio</option>
+                        <option value="3">Marzo</option>
+                        <option value="4">Aprile</option>
+                        <option value="5">Maggio</option>
+                        <option value="6">Giugno</option>
+                        <option value="7">Luglio</option>
+                        <option value="8" selected>Agosto</option>
+                        <option value="9">Settembre</option>
+                        <option value="10">Ottobre</option>
+                        <option value="11">Novembre</option>
+                        <option value="12">Dicembre</option>
+                    </select>
+                </div>
+                <button onclick="calcolaTurni()" style="background-color: #27ae60;">CALCOLA TURNI ORA</button>
+                <button onclick="salvaGriglia()" id="btn-salva" style="background-color: #c0392b; display: none;">💾 SALVA GRIGLIA DEFINITIVA</button>
+                <button onclick="caricaGrigliaSalvata()" style="background-color: #2980b9;">📂 VEDI TURNI SALVATI</button>
+            </div>
+
+            <div class="checkbox-group" id="checkbox-group"></div>
         </div>
 
-        <div class="db-list">
-            <div class="db-column">
-                <h4>Riposi Weekend (Sab-Dom)</h4>
-                <div id="lista-weekend">Caricamento in corso...</div>
-            </div>
-            <div class="db-column">
-                <h4>Ferie</h4>
-                <div id="lista-ferie">Caricamento in corso...</div>
-            </div>
-        </div>
-    </div> <!-- FINE PRIMO PANNELLO -->
+        <div id="loading" class="loading">Elaborazione in corso (Attendi)... ⏳</div>
+        <div id="results"></div>
+    </div>
 
-    <!-- SECONDO PANNELLO: RICHIESTE SPECIFICHE -->
-    <div class="panel">
-        <h3>Richieste Turni / Riposi Specifici</h3>
-        <div class="db-form">
-            <input type="date" id="req-date">
-            <select id="req-dipendente"></select>
-            <select id="req-turno">
-                <option value="Riposo">Giorno di Riposo</option>
-                <option value="Apertura">Apertura (09:30)</option>
-                <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option>
-                <option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
-            </select>
-            <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
-        </div>
-    </div> <!-- FINE SECONDO PANNELLO -->
-
-    <!-- TERZO PANNELLO: GENERAZIONE -->
-    <div class="panel">
-        <h3>Generazione Griglia</h3>
-        <div class="controls">
-            <div>
-                <label>Anno: </label>
-                <input type="number" id="year" value="2026" min="2024" max="2030" onchange="cambioAnnoMese()">
-            </div>
-            <div>
-                <label>Mese: </label>
-                <select id="month" onchange="generateWeekCheckboxes()">
-                    <option value="1">Gennaio</option>
-                    <option value="2">Febbraio</option>
-                    <option value="3">Marzo</option>
-                    <option value="4">Aprile</option>
-                    <option value="5">Maggio</option>
-                    <option value="6">Giugno</option>
-                    <option value="7">Luglio</option>
-                    <option value="8" selected>Agosto</option>
-                    <option value="9">Settembre</option>
-                    <option value="10">Ottobre</option>
-                    <option value="11">Novembre</option>
-                    <option value="12">Dicembre</option>
+    <!-- ========================================================= -->
+    <!-- PAGINA 2: GESTIONE DATABASE (FERIE, WEEKEND E RICHIESTE) -->
+    <!-- ========================================================= -->
+    <div id="tab-db" class="tab-content">
+        <div class="panel">
+            <h3>Gestione Database (Ferie e Riposi Weekend)</h3>
+            <div class="db-form">
+                <select id="db-tipo">
+                    <option value="weekend">Riposo Weekend (Sab-Dom)</option>
+                    <option value="ferie">Ferie Intera Settimana</option>
                 </select>
+                <select id="db-dipendente"></select>
+                <input type="number" id="db-week" placeholder="Num. Settimana (es. 34)" min="1" max="52" style="width: 180px;">
+                <button type="button" onclick="aggiungiAlDB()">Aggiungi Regola</button>
             </div>
-            <button onclick="calcolaTurni()" style="background-color: #27ae60;">CALCOLA TURNI ORA</button>
-            <button onclick="salvaGriglia()" id="btn-salva" style="background-color: #c0392b; display: none;">💾 SALVA GRIGLIA DEFINITIVA</button>
-            <button onclick="caricaGrigliaSalvata()" style="background-color: #2980b9;">📂 VEDI TURNI SALVATI</button>
+
+            <div class="db-list">
+                <div class="db-column">
+                    <h4>Riposi Weekend (Sab-Dom)</h4>
+                    <div id="lista-weekend">Caricamento in corso...</div>
+                </div>
+                <div class="db-column">
+                    <h4>Ferie</h4>
+                    <div id="lista-ferie">Caricamento in corso...</div>
+                </div>
+            </div>
         </div>
 
-        <div class="checkbox-group" id="checkbox-group"></div>
-    </div>
-
-    <!-- QUARTO PANNELLO: DASHBOARD ANALISI EQUITÀ -->
-    <div class="panel">
-        <h3>Analisi Equità Reale (Ultimi 90 Giorni)</h3>
-        <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ccc; height: 350px;">
-            <canvas id="equityChart"></canvas>
+        <div class="panel">
+            <h3>Richieste Turni / Riposi Specifici</h3>
+            <div class="db-form">
+                <input type="date" id="req-date">
+                <select id="req-dipendente"></select>
+                <select id="req-turno">
+                    <option value="Riposo">Giorno di Riposo</option>
+                    <option value="Apertura">Apertura (09:30)</option>
+                    <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option>
+                    <option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
+                </select>
+                <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
+            </div>
         </div>
     </div>
 
-    <div id="loading" class="loading">Elaborazione in corso (Attendi)... ⏳</div>
-    <div id="results"></div>
+    <!-- ========================================================= -->
+    <!-- PAGINA 3: ANALISI EQUITÀ -->
+    <!-- ========================================================= -->
+    <div id="tab-analytics" class="tab-content">
+        <div class="panel">
+            <h3>Analisi Equità Reale (Ultimi 90 Giorni)</h3>
+            <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ccc; height: 380px;">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -184,8 +211,21 @@
             reqDip.appendChild(optReq);
         }
         cambioAnnoMese();
-        loadEquityAnalytics();
     };
+
+    // FUNZIONE PER CAMBIARE SCHEDA (TAB)
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        document.getElementById(`btn-tab-${tabName}`).classList.add('active');
+
+        // Se apriamo la scheda Analisi Equità, ricarichiamo il grafico
+        if (tabName === 'analytics') {
+            loadEquityAnalytics();
+        }
+    }
 
     function cambioAnnoMese() {
         generateWeekCheckboxes();
@@ -409,7 +449,6 @@
             if(result.success) {
                 alert("Griglia salvata nel database permanente!");
                 document.getElementById('btn-salva').style.display = 'none';
-                loadEquityAnalytics(); // Aggiorna il grafico dell'equità dopo il salvataggio
             }
         } catch(e) {
             alert("Errore durante il salvataggio.");
@@ -532,7 +571,7 @@
                 });
                 tableHTML += `</tr>`;
             }
-            tableHTML += `</tbody></table>`;
+            tableHTML += `</tbody>mtable>`;
             resultsDiv.innerHTML += tableHTML;
         }
     }
