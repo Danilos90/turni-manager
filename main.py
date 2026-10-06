@@ -203,6 +203,7 @@ def get_schedule():
         })
     return {"success": True, "data": schedule}
 
+# --- NUOVA LOGICA ANALYTICS A PUNTEGGIO E GIORNALIERA ---
 @app.get("/api/analytics/equity")
 def get_equity_analytics():
     conn = get_db_connection()
@@ -220,23 +221,71 @@ def get_equity_analytics():
     stats = {
         emp_id: {
             "name": EMP_NAMES.get(emp_id, f"Dipendente {emp_id}"),
-            "chiusure": 0,
-            "weekend": 0,
-            "aperture": 0
+            "score": 0,
+            "patterns": {"SAB_DOM": 0, "GIO_VEN": 0, "MAR_MER": 0, "LUN_VEN": 0, "LUN_GIO": 0},
+            "days": {d: {"09:30": 0, "10:00": 0, "10:30": 0, "11:00": 0, "11:30": 0, "12:00": 0, "15:00": 0} for d in range(7)}
         } for emp_id in range(1, 10)
     }
 
+    # Punteggi per Pattern Riposo
+    pts_pattern = {"SAB_DOM": 10, "GIO_VEN": 5, "MAR_MER": 4, "LUN_VEN": 3, "LUN_GIO": 1}
+    
+    # Punteggi per Turni Feriali (Lunedì - Venerdì)
+    pts_weekday = {"09:30": 10, "10:00": 9, "15:00": 8, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": 1}
+    
+    # Punteggi per Turni Festivi (Sabato e Domenica)
+    pts_weekend = {"09:30": 20, "10:00": 9, "15:00": 2, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": -10}
+
+    REST_PATTERNS_IDX = {
+        "LUN_GIO": [0, 3],
+        "LUN_VEN": [0, 4],
+        "MAR_MER": [1, 2],
+        "GIO_VEN": [3, 4],
+        "SAB_DOM": [5, 6]
+    }
+
+    weekly_rests = {emp_id: {} for emp_id in range(1, 10)}
+
+    def get_shift_key(s_name):
+        for k in ["09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "15:00"]:
+            if k in s_name: return k
+        return None
+
+    # Assegnazione punteggi per ore
     for emp_id, date_str, shift_name in rows:
-        if emp_id not in stats or shift_name in ["Riposo", "Ferie"]:
+        if emp_id not in stats:
             continue
 
         d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-        if "21:00" in shift_name:
-            stats[emp_id]["chiusure"] += 1
-        if "09:30" in shift_name:
-            stats[emp_id]["aperture"] += 1
-        if d_obj.weekday() in [5, 6]:
-            stats[emp_id]["weekend"] += 1
+        day_idx = d_obj.weekday()
+        iso_year, iso_week, _ = d_obj.isocalendar()
+
+        if shift_name == "Riposo":
+            if iso_week not in weekly_rests[emp_id]:
+                weekly_rests[emp_id][iso_week] = []
+            weekly_rests[emp_id][iso_week].append(day_idx)
+            continue
+            
+        if shift_name == "Ferie":
+            continue
+
+        s_key = get_shift_key(shift_name)
+        if s_key:
+            stats[emp_id]["days"][day_idx][s_key] += 1
+            if day_idx in [5, 6]:
+                stats[emp_id]["score"] += pts_weekend.get(s_key, 0)
+            else:
+                stats[emp_id]["score"] += pts_weekday.get(s_key, 0)
+
+    # Assegnazione punteggi per pattern
+    for emp_id, w_rests in weekly_rests.items():
+        for wk, rests in w_rests.items():
+            sorted_rests = sorted(rests)
+            for p_name, p_days in REST_PATTERNS_IDX.items():
+                if sorted_rests == p_days:
+                    stats[emp_id]["patterns"][p_name] += 1
+                    stats[emp_id]["score"] += pts_pattern.get(p_name, 0)
+                    break
 
     return {
         "success": True,
