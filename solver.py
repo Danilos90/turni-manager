@@ -39,8 +39,40 @@ SHIFT_NAMES_REVERSE = {
     9: "11:30 14:30 15:30 20:30"
 }
 
+# TABELLE PUNTEGGI PER L'OTTIMIZZAZIONE DELL'EQUITÀ
+PTS_PATTERN = {
+    "SAB_DOM": 10,
+    "GIO_VEN": 5,
+    "MAR_MER": 4,
+    "LUN_VEN": 3,
+    "LUN_GIO": 1
+}
+
+PTS_WEEKDAY = {
+    1: 10, # 09:30
+    8: 9,  # 10:00
+    5: 8,  # 15:00
+    2: 6,  # 10:30
+    3: 5,  # 11:00
+    9: 2,  # 11:30
+    4: 1,  # 12:00
+    0: 0, 7: 0
+}
+
+PTS_WEEKEND = {
+    1: 20, # 09:30
+    8: 9,  # 10:00
+    2: 6,  # 10:30
+    3: 5,  # 11:00
+    5: 2,  # 15:00
+    9: 2,  # 11:30
+    4: -10,# 12:00
+    0: 0, 7: 0
+}
+
 def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week, 
-               prev_weekend_shifts, prev_week_full_shifts, history_shifts, history_weekend_shifts, history_patterns, db_richieste):
+               prev_weekend_shifts, prev_week_full_shifts, history_shifts, history_weekend_shifts, 
+               history_patterns, history_scores, history_day_shifts, db_richieste):
     
     model = cp_model.CpModel()
     works = {}
@@ -151,9 +183,28 @@ def solve_week(week_dates, weekend_off_this, weekend_off_next, ferie_this_week,
                 obj_terms.append(works[(e, SAB, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
                 obj_terms.append(works[(e, DOM, s_id)] * (-60 * history_weekend_shifts[e][s_id]))
 
-            # PARAMETRO 10: MEMORIA PATTERN CON PENALITÀ PROGRESSIVA SUI PIÙ USATI
-            for p_name in ["LUN_GIO", "LUN_VEN", "MAR_MER", "GIO_VEN"]:
-                obj_terms.append(rest_pattern_vars[(e, p_name)] * (-80 * history_patterns[e][p_name]))
+            # ---------------------------------------------------------
+            # OTTIMIZZAZIONE FLESSIBILE BASATA SUI 9 GRAFICI DI EQUITÀ
+            # ---------------------------------------------------------
+            # 1. Bilanciamento Punteggio Globale (Grafico 1)
+            for p_name, p_pts in PTS_PATTERN.items():
+                obj_terms.append(rest_pattern_vars[(e, p_name)] * (-10 * history_scores[e] * p_pts))
+
+            for d in DAYS:
+                for s_id in SHIFT_IDS:
+                    if s_id in [SHIFTS["RIPOSO"], SHIFTS["FERIE"]]: continue
+                    s_pts = PTS_WEEKEND.get(s_id, 0) if d in [SAB, DOM] else PTS_WEEKDAY.get(s_id, 0)
+                    obj_terms.append(works[(e, d, s_id)] * (-10 * history_scores[e] * s_pts))
+
+            # 2. Bilanciamento Frequenza Pattern di Riposo (Grafico 2)
+            for p_name in REST_PATTERNS.keys():
+                obj_terms.append(rest_pattern_vars[(e, p_name)] * (-200 * history_patterns[e][p_name]))
+
+            # 3. Bilanciamento Frequenza Turni per Singolo Giorno (Grafici 3-9)
+            for d in DAYS:
+                for s_id in SHIFT_IDS:
+                    if s_id in [SHIFTS["RIPOSO"], SHIFTS["FERIE"]]: continue
+                    obj_terms.append(works[(e, d, s_id)] * (-150 * history_day_shifts[e][d][s_id]))
 
             # PROFILI INDIVIDUALI BILANCIATI
             ap_e = sum(works[(e, d, SHIFTS["APERTURA"])] for d in DAYS)
@@ -343,6 +394,8 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
     history_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_weekend_shifts = {e: {s: 0 for s in SHIFT_IDS} for e in EMPLOYEES}
     history_patterns = {e: {p: 0 for p in REST_PATTERNS.keys()} for e in EMPLOYEES}
+    history_scores = {e: 0 for e in EMPLOYEES}
+    history_day_shifts = {e: {d: {s: 0 for s in SHIFT_IDS} for d in DAYS} for e in EMPLOYEES}
     
     prev_weekend_shifts = {e: {'SAB': -1, 'DOM': -1} for e in EMPLOYEES}
     prev_week_full_shifts = {e: {d: -1 for d in DAYS} for e in EMPLOYEES}
@@ -366,22 +419,23 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             
             d_obj = datetime.datetime.strptime(d_str, "%Y-%m-%d").date()
             iso_year, iso_week, iso_day = d_obj.isocalendar()
+            day_idx = iso_day - 1
             
             # Ignora i record futuri o della settimana corrente
-            if d_obj >= target_start_date:
-                continue
-                
-            # Ignora i record più vecchi di 90 giorni
-            if d_obj < cutoff_date:
+            if d_obj >= target_start_date or d_obj < cutoff_date:
                 continue
             
-            if s_id != SHIFTS["RIPOSO"]:
+            if s_id not in [SHIFTS["RIPOSO"], SHIFTS["FERIE"]]:
                 history_shifts[e_id][s_id] += 1
-                if iso_day == 6 or iso_day == 7:
+                history_day_shifts[e_id][day_idx][s_id] += 1
+                
+                if day_idx in [5, 6]:
+                    history_scores[e_id] += PTS_WEEKEND.get(s_id, 0)
                     history_weekend_shifts[e_id][s_id] += 1
+                else:
+                    history_scores[e_id] += PTS_WEEKDAY.get(s_id, 0)
                     
             if iso_year == year and iso_week == target_weeks[0] - 1:
-                day_idx = iso_day - 1
                 prev_week_full_shifts[e_id][day_idx] = s_id
                 if iso_day == 6:
                     prev_weekend_shifts[e_id]['SAB'] = s_id
@@ -391,13 +445,14 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             if s_id == SHIFTS["RIPOSO"]:
                 if iso_week not in emp_weekly_rests[e_id]:
                     emp_weekly_rests[e_id][iso_week] = []
-                emp_weekly_rests[e_id][iso_week].append(iso_day - 1) 
+                emp_weekly_rests[e_id][iso_week].append(day_idx) 
 
         for e_id, weeks_data in emp_weekly_rests.items():
             for wk, rests in weeks_data.items():
                 for p_name, p_days in REST_PATTERNS.items():
                     if sorted(rests) == sorted(p_days):
                         history_patterns[e_id][p_name] += 1
+                        history_scores[e_id] += PTS_PATTERN.get(p_name, 0)
                         break
 
     for iso_wk in target_weeks:
@@ -417,6 +472,8 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
             history_shifts,
             history_weekend_shifts,
             history_patterns,
+            history_scores,
+            history_day_shifts,
             db_richieste
         )
         full_schedule.extend(week_schedule)
@@ -445,13 +502,18 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
                 emp_rests[e_id].append(d_idx)
             else:
                 history_shifts[e_id][s_id] += 1
-                if d_str == sab_str or d_str == dom_str: 
+                history_day_shifts[e_id][d_idx][s_id] += 1
+                if d_str in [sab_str, dom_str]: 
                     history_weekend_shifts[e_id][s_id] += 1
+                    history_scores[e_id] += PTS_WEEKEND.get(s_id, 0)
+                else:
+                    history_scores[e_id] += PTS_WEEKDAY.get(s_id, 0)
 
         for e_id, rests in emp_rests.items():
             for p_name, p_days in REST_PATTERNS.items():
                 if sorted(rests) == sorted(p_days):
                     history_patterns[e_id][p_name] += 1
+                    history_scores[e_id] += PTS_PATTERN.get(p_name, 0)
                     break
 
     return full_schedule
