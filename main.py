@@ -20,7 +20,7 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------
-# CREDENZIALI TURSO (Database Cloud Permanente)
+# CREDENZIALI TURSO
 # ---------------------------------------------------------
 TURSO_URL = "libsql://turni-db-danilos90.aws-us-east-1.turso.io"
 TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODY4ODc3MzEsImlkIjoiMDFhMDBhY2MtZGMwMS03NzQ3LThlOTMtYWFiNzQ1Mjc2YTM3Iiwia2lkIjoidnREaG5meDJ1VW5XYzNTNkxCTlNHdWhDNVFQZ0R6dTFQSDM5SHhZbTV1MCIsInJpZCI6ImQ4M2I4MmU1LThjMmEtNGI1NS05ZTA1LTliNmJkNTA4YjIzYSJ9.GY_p0uColc7rjxfCAzLZhWLbpMCSZ025vGau7NmjOg3zWx-uLxiSpa35EVrB6hNYFf1tZ191NTh0-CanjmS4Bw"
@@ -80,7 +80,6 @@ def init_db():
 
 init_db()
 
-# --- MODELLI DATI ---
 class ScheduleRequest(BaseModel):
     year: int
     target_weeks: List[int]
@@ -103,12 +102,12 @@ class TurnoGenerato(BaseModel):
 class SalvaScheduleRequest(BaseModel):
     schedule: List[TurnoGenerato]
 
-# --- ROTTA PER IL FRONTEND ---
+# Rotta principale con supporto GET e HEAD per Render
 @app.get("/")
+@app.head("/")
 async def serve_frontend():
     return FileResponse("index.html")
 
-# --- API WEEKEND ---
 @app.post("/api/weekends")
 def add_weekend(req: AdminRequest):
     conn = get_db_connection()
@@ -134,7 +133,6 @@ def get_weekends(year: int):
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "iso_week": r[1]} for r in rows]}
 
-# --- API FERIE ---
 @app.post("/api/ferie")
 def add_ferie(req: AdminRequest):
     conn = get_db_connection()
@@ -160,7 +158,6 @@ def get_ferie(year: int):
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "iso_week": r[1]} for r in rows]}
 
-# --- API RICHIESTE SPECIFICHE ---
 @app.post("/api/richieste")
 def add_richiesta(req: RichiestaRequest):
     conn = get_db_connection()
@@ -178,7 +175,6 @@ def get_richieste():
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "req_date": r[1], "shift_name": r[2]} for r in rows]}
 
-# --- API SALVATAGGIO E MEMORIA TURNI ---
 @app.post("/api/save_schedule")
 def save_schedule(req: SalvaScheduleRequest):
     conn = get_db_connection()
@@ -207,11 +203,9 @@ def get_schedule():
         })
     return {"success": True, "data": schedule}
 
-# --- API ANALYTICS EQUITÀ (ULTIMI 90 GIORNI) ---
 @app.get("/api/analytics/equity")
 def get_equity_analytics():
     conn = get_db_connection()
-    
     cutoff_date = (datetime.date.today() - datetime.timedelta(days=90)).strftime("%Y-%m-%d")
     
     cursor = conn.execute("""
@@ -233,23 +227,14 @@ def get_equity_analytics():
     }
 
     for emp_id, date_str, shift_name in rows:
-        if emp_id not in stats:
-            continue
-            
-        if shift_name in ["Riposo", "Ferie"]:
+        if emp_id not in stats or shift_name in ["Riposo", "Ferie"]:
             continue
 
         d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-        
-        # Conteggio Chiusure (12:00-21:00 e 15:00-21:00)
         if "21:00" in shift_name:
             stats[emp_id]["chiusure"] += 1
-            
-        # Conteggio Aperture (09:30)
         if "09:30" in shift_name:
             stats[emp_id]["aperture"] += 1
-
-        # Conteggio Weekend (Sabato e Domenica)
         if d_obj.weekday() in [5, 6]:
             stats[emp_id]["weekend"] += 1
 
@@ -260,7 +245,6 @@ def get_equity_analytics():
         "data": list(stats.values())
     }
 
-# --- GENERAZIONE TURNI ---
 @app.post("/generate")
 def generate_schedule(request: ScheduleRequest):
     conn = get_db_connection()
