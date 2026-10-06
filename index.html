@@ -10,7 +10,7 @@
         .container { max-width: 1250px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         h1 { color: #1a2b4c; margin-top: 0; margin-bottom: 20px; font-size: 26px; border-bottom: 2px solid #f39c12; padding-bottom: 10px; }
         
-        .nav-tabs { display: flex; gap: 8px; border-bottom: 3px solid #1a2b4c; margin-bottom: 25px; }
+        .nav-tabs { display: flex; gap: 8px; border-bottom: 3px solid #1a2b4c; margin-bottom: 25px; flex-wrap: wrap; }
         .tab-btn { background: #f1f5f9; color: #1a2b4c; border: 1px solid #cbd5e1; border-bottom: none; padding: 12px 22px; font-weight: bold; border-radius: 8px 8px 0 0; cursor: pointer; transition: 0.2s; font-size: 15px; }
         .tab-btn:hover { background: #e2e8f0; }
         .tab-btn.active { background: #1a2b4c; color: white; border-color: #1a2b4c; }
@@ -30,8 +30,8 @@
         .checkbox-item { display: flex; align-items: center; gap: 6px; font-weight: bold; background: white; padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; }
         
         .db-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
-        .db-list { display: flex; gap: 20px; }
-        .db-column { flex: 1; background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1; min-height: 100px; }
+        .db-list { display: flex; gap: 20px; flex-wrap: wrap; }
+        .db-column { flex: 1; min-width: 300px; background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1; min-height: 100px; }
         .db-column h4 { margin: 0 0 10px 0; color: #d35400; text-align: center; }
         .db-item { background: #fdf2e9; padding: 6px 12px; border-radius: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 14px; border: 1px solid #fad7a1; }
         .btn-remove { background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 12px; }
@@ -48,32 +48,8 @@
         .badge-status.unsaved { background-color: #fef08a; color: #854d0e; }
         .badge-status.saved { background-color: #bbf7d0; color: #166534; }
 
-        /* ETICHETTE TESTO (MODALITÀ LETTURA) */
-        .shift-label {
-            display: block;
-            width: 100%;
-            padding: 7px 4px;
-            border-radius: 5px;
-            font-size: 12px;
-            font-weight: 600;
-            text-align: center;
-            box-sizing: border-box;
-            border: 1px solid transparent;
-        }
-
-        /* SELECT TURNI SULLA GRIGLIA (MODALITÀ MODIFICA) */
-        select.shift-select {
-            width: 100%;
-            padding: 7px 4px;
-            border-radius: 5px;
-            font-size: 12px;
-            font-weight: 600;
-            border: 1px solid #cbd5e1;
-            text-align: center;
-            cursor: pointer;
-            box-sizing: border-box;
-            display: none; /* Nascosto di default */
-        }
+        .shift-label { display: block; width: 100%; padding: 7px 4px; border-radius: 5px; font-size: 12px; font-weight: 600; text-align: center; box-sizing: border-box; border: 1px solid transparent; }
+        select.shift-select { width: 100%; padding: 7px 4px; border-radius: 5px; font-size: 12px; font-weight: 600; border: 1px solid #cbd5e1; text-align: center; cursor: pointer; box-sizing: border-box; display: none; }
         
         .turno-riposo-style { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
         .turno-ferie-style { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
@@ -89,6 +65,11 @@
         .toast.info { background-color: #2980b9; }
 
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* STILI PER LA DASHBOARD ANALYTICS MULTIPLA */
+        .chart-box { background: white; padding: 15px; border-radius: 8px; border: 1px solid #cbd5e1; margin-bottom: 25px; height: 320px; }
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; }
+        .chart-box-small { background: white; padding: 15px; border-radius: 8px; border: 1px solid #cbd5e1; height: 280px; }
     </style>
 </head>
 <body>
@@ -100,11 +81,11 @@
 
     <div class="nav-tabs">
         <button class="tab-btn active" id="btn-tab-griglia" onclick="switchTab('griglia')">📅 Griglia Turni</button>
-        <button class="tab-btn" id="btn-tab-db" onclick="switchTab('db')">⚙️ Gestione DB & Ferie</button>
+        <button class="tab-btn" id="btn-tab-db" onclick="switchTab('db')">⚙️️ Gestione DB & Ferie</button>
         <button class="tab-btn" id="btn-tab-analytics" onclick="switchTab('analytics')">📊 Analisi Equità</button>
     </div>
 
-    <!-- SCHEDA 1 -->
+    <!-- SCHEDA 1: GRIGLIA -->
     <div id="tab-griglia" class="tab-content active">
         <div class="panel">
             <h3>Generazione & Calcolo</h3>
@@ -116,36 +97,26 @@
                 <div>
                     <label>Mese: </label>
                     <select id="month" onchange="generateWeekCheckboxes()">
-                        <option value="1">Gennaio</option>
-                        <option value="2">Febbraio</option>
-                        <option value="3">Marzo</option>
-                        <option value="4">Aprile</option>
-                        <option value="5">Maggio</option>
-                        <option value="6">Giugno</option>
-                        <option value="7">Luglio</option>
-                        <option value="8" selected>Agosto</option>
-                        <option value="9">Settembre</option>
-                        <option value="10">Ottobre</option>
-                        <option value="11">Novembre</option>
-                        <option value="12">Dicembre</option>
+                        <option value="1">Gennaio</option><option value="2">Febbraio</option>
+                        <option value="3">Marzo</option><option value="4">Aprile</option>
+                        <option value="5">Maggio</option><option value="6">Giugno</option>
+                        <option value="7">Luglio</option><option value="8" selected>Agosto</option>
+                        <option value="9">Settembre</option><option value="10">Ottobre</option>
+                        <option value="11">Novembre</option><option value="12">Dicembre</option>
                     </select>
                 </div>
                 <button onclick="calcolaTurni()" style="background-color: #27ae60;">🚀 CALCOLA TURNI ORA</button>
                 <button onclick="caricaGrigliaSalvata()" style="background-color: #2980b9;">📂 VEDI TURNI SALVATI</button>
-                
-                <!-- NUOVI PULSANTI PER MODIFICA E SALVATAGGIO -->
                 <button onclick="abilitaModifica()" id="btn-modifica" style="background-color: #8e44ad; display: none;">✏️ ABILITA MODIFICA</button>
                 <button onclick="salvaGriglia()" id="btn-salva" style="background-color: #c0392b; display: none;">💾 SALVA GRIGLIA</button>
             </div>
-
             <div class="checkbox-group" id="checkbox-group"></div>
         </div>
-
         <div id="loading" class="loading">Elaborazione in corso... ⏳</div>
         <div id="results"></div>
     </div>
 
-    <!-- SCHEDA 2 -->
+    <!-- SCHEDA 2: GESTIONE DB -->
     <div id="tab-db" class="tab-content">
         <div class="panel">
             <h3>Riposi Weekend e Ferie</h3>
@@ -158,7 +129,6 @@
                 <input type="number" id="db-week" placeholder="Num. Settimana (es. 34)" min="1" max="52" style="width: 180px;">
                 <button type="button" onclick="aggiungiAlDB()">Aggiungi Regola</button>
             </div>
-
             <div class="db-list">
                 <div class="db-column">
                     <h4>Riposi Weekend (Sab-Dom)</h4>
@@ -170,29 +140,43 @@
                 </div>
             </div>
         </div>
-
         <div class="panel">
             <h3>Richieste Specifiche</h3>
             <div class="db-form">
                 <input type="date" id="req-date">
                 <select id="req-dipendente"></select>
                 <select id="req-turno">
-                    <option value="Riposo">Giorno di Riposo</option>
-                    <option value="Apertura">Apertura (09:30)</option>
-                    <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option>
-                    <option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
+                    <option value="Riposo">Giorno di Riposo</option><option value="Apertura">Apertura (09:30)</option>
+                    <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option><option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
                 </select>
                 <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
             </div>
         </div>
     </div>
 
-    <!-- SCHEDA 3 -->
+    <!-- SCHEDA 3: ANALISI EQUITÀ GAMIFICATA -->
     <div id="tab-analytics" class="tab-content">
         <div class="panel">
-            <h3>Analisi Equità Reale (Ultimi 90 Giorni)</h3>
-            <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #cbd5e1; height: 380px;">
-                <canvas id="equityChart"></canvas>
+            <h3>Punteggio Globale Equità (Ultimi 90 Giorni)</h3>
+            <p style="font-size: 12px; color: #64748b; margin-top: -8px;">Somma di punti basata su pattern assegnati e orari di lavoro feriali/festivi.</p>
+            <div class="chart-box" style="height: 260px;">
+                <canvas id="scoreChart"></canvas>
+            </div>
+            
+            <h3>Frequenza Pattern Riposo (Ultimi 90 Giorni)</h3>
+            <div class="chart-box">
+                <canvas id="patternChart"></canvas>
+            </div>
+
+            <h3>Frequenza Turni Svolti per Giorno (Ultimi 90 Giorni)</h3>
+            <div class="charts-grid">
+                <div class="chart-box-small"><canvas id="day0Chart"></canvas></div>
+                <div class="chart-box-small"><canvas id="day1Chart"></canvas></div>
+                <div class="chart-box-small"><canvas id="day2Chart"></canvas></div>
+                <div class="chart-box-small"><canvas id="day3Chart"></canvas></div>
+                <div class="chart-box-small"><canvas id="day4Chart"></canvas></div>
+                <div class="chart-box-small"><canvas id="day5Chart"></canvas></div>
+                <div class="chart-box-small"><canvas id="day6Chart"></canvas></div>
             </div>
         </div>
     </div>
@@ -206,38 +190,24 @@
     };
 
     const SHIFT_OPTIONS = [
-        "Riposo",
-        "09:30 13:00 14:00 18:30",
-        "10:00 13:00 14:00 19:00",
-        "10:30 13:00 14:00 19:30",
-        "11:00 14:30 15:30 20:00",
-        "11:30 14:30 15:30 20:30",
-        "12:00 14:30 15:30 21:00",
-        "15:00 21:00",
-        "Ferie"
+        "Riposo", "09:30 13:00 14:00 18:30", "10:00 13:00 14:00 19:00",
+        "10:30 13:00 14:00 19:30", "11:00 14:30 15:30 20:00", "11:30 14:30 15:30 20:30",
+        "12:00 14:30 15:30 21:00", "15:00 21:00", "Ferie"
     ];
 
     let db_weekends = {}; 
     let db_ferie = {}; 
-    let equityChartInstance = null;
+    let chartInstances = {};
 
     document.addEventListener("DOMContentLoaded", function() {
         const selectDip = document.getElementById('db-dipendente');
         const reqDip = document.getElementById('req-dipendente');
         
         if (selectDip && reqDip) {
-            selectDip.innerHTML = '';
-            reqDip.innerHTML = '';
+            selectDip.innerHTML = ''; reqDip.innerHTML = '';
             for (let id in dipendenti) {
-                let opt = document.createElement('option');
-                opt.value = id;
-                opt.innerHTML = dipendenti[id];
-                selectDip.appendChild(opt);
-                
-                let optReq = document.createElement('option');
-                optReq.value = id;
-                optReq.innerHTML = dipendenti[id];
-                reqDip.appendChild(optReq);
+                let opt = document.createElement('option'); opt.value = id; opt.innerHTML = dipendenti[id]; selectDip.appendChild(opt);
+                let optReq = document.createElement('option'); optReq.value = id; optReq.innerHTML = dipendenti[id]; reqDip.appendChild(optReq);
             }
         }
         cambioAnnoMese();
@@ -259,49 +229,25 @@
 
         const targetTab = document.getElementById(`tab-${tabName}`);
         const targetBtn = document.getElementById(`btn-tab-${tabName}`);
-        if (targetTab && targetBtn) {
-            targetTab.classList.add('active');
-            targetBtn.classList.add('active');
-        }
+        if (targetTab && targetBtn) { targetTab.classList.add('active'); targetBtn.classList.add('active'); }
 
-        if (tabName === 'analytics') {
-            loadEquityAnalytics();
-        }
+        if (tabName === 'analytics') { loadEquityAnalytics(); }
     }
 
-    function cambioAnnoMese() {
-        generateWeekCheckboxes();
-        caricaDatabaseDalServer();
-    }
+    function cambioAnnoMese() { generateWeekCheckboxes(); caricaDatabaseDalServer(); }
 
     async function caricaDatabaseDalServer() {
-        const yearElem = document.getElementById('year');
-        if (!yearElem) return;
+        const yearElem = document.getElementById('year'); if (!yearElem) return;
         const year = parseInt(yearElem.value);
         try {
-            const resW = await fetch(`/api/weekends?year=${year}`);
-            const jsonW = await resW.json();
+            const resW = await fetch(`/api/weekends?year=${year}`); const jsonW = await resW.json();
             db_weekends = {};
-            if(jsonW.success) {
-                jsonW.data.forEach(item => {
-                    if(!db_weekends[item.iso_week]) db_weekends[item.iso_week] = [];
-                    db_weekends[item.iso_week].push(item.employee_id);
-                });
-            }
-
-            const resF = await fetch(`/api/ferie?year=${year}`);
-            const jsonF = await resF.json();
+            if(jsonW.success) jsonW.data.forEach(item => { if(!db_weekends[item.iso_week]) db_weekends[item.iso_week] = []; db_weekends[item.iso_week].push(item.employee_id); });
+            const resF = await fetch(`/api/ferie?year=${year}`); const jsonF = await resF.json();
             db_ferie = {};
-            if(jsonF.success) {
-                jsonF.data.forEach(item => {
-                    if(!db_ferie[item.iso_week]) db_ferie[item.iso_week] = [];
-                    db_ferie[item.iso_week].push(item.employee_id);
-                });
-            }
+            if(jsonF.success) jsonF.data.forEach(item => { if(!db_ferie[item.iso_week]) db_ferie[item.iso_week] = []; db_ferie[item.iso_week].push(item.employee_id); });
             aggiornaVisualizzazioneDB();
-        } catch (error) {
-            showToast("Errore lettura DB", "error");
-        }
+        } catch (error) { showToast("Errore lettura DB", "error"); }
     }
 
     async function aggiungiAlDB() {
@@ -309,470 +255,257 @@
         const empId = parseInt(document.getElementById('db-dipendente').value);
         const week = parseInt(document.getElementById('db-week').value);
         const year = parseInt(document.getElementById('year').value);
-
-        if(!week || week < 1 || week > 52) {
-            showToast("Inserisci un numero di settimana ISO valido (1-52)", "error");
-            return;
-        }
-
-        const endpoint = tipo === 'weekend' ? '/api/weekends' : '/api/ferie';
-        await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ employee_id: empId, year: year, iso_week: week })
-        });
-
-        showToast("Regola aggiunta al DB", "success");
-        caricaDatabaseDalServer();
+        if(!week || week < 1 || week > 52) return showToast("Inserisci un numero di settimana ISO valido (1-52)", "error");
+        await fetch(tipo === 'weekend' ? '/api/weekends' : '/api/ferie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: empId, year: year, iso_week: week }) });
+        showToast("Regola aggiunta al DB", "success"); caricaDatabaseDalServer();
     }
 
     async function aggiungiRichiesta() {
         const dateVal = document.getElementById('req-date').value;
         const empId = parseInt(document.getElementById('req-dipendente').value);
         const turnoVal = document.getElementById('req-turno').value;
-
-        if(!dateVal) {
-            showToast("Seleziona una data per la richiesta", "error");
-            return;
-        }
-
-        try {
-            await fetch('/api/richieste', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ employee_id: empId, req_date: dateVal, shift_name: turnoVal })
-            });
-            showToast("Richiesta salvata con successo", "success");
-        } catch (error) {
-            showToast("Errore nel salvataggio della richiesta", "error");
-        }
+        if(!dateVal) return showToast("Seleziona una data per la richiesta", "error");
+        try { await fetch('/api/richieste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: empId, req_date: dateVal, shift_name: turnoVal }) }); showToast("Richiesta salvata con successo", "success"); } catch (error) { showToast("Errore nel salvataggio della richiesta", "error"); }
     }
 
     async function rimuoviDalDB(tipo, week, empId) {
         const year = parseInt(document.getElementById('year').value);
-        const endpoint = tipo === 'weekend' ? '/api/weekends' : '/api/ferie';
-
-        await fetch(endpoint, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ employee_id: empId, year: year, iso_week: week })
-        });
-
-        showToast("Regola rimossa", "info");
-        caricaDatabaseDalServer();
+        await fetch(tipo === 'weekend' ? '/api/weekends' : '/api/ferie', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: empId, year: year, iso_week: week }) });
+        showToast("Regola rimossa", "info"); caricaDatabaseDalServer();
     }
 
     function aggiornaVisualizzazioneDB() {
         const renderList = (db, elementId, tipo) => {
-            const container = document.getElementById(elementId);
-            if (!container) return;
-            container.innerHTML = '';
-            let hasItems = false;
-
-            const sortedWeeks = Object.keys(db).sort((a, b) => parseInt(a) - parseInt(b));
-            sortedWeeks.forEach(week => {
-                db[week].forEach(empId => {
-                    hasItems = true;
-                    let div = document.createElement('div');
-                    div.className = 'db-item';
-                    div.innerHTML = `<span><strong>Sett. ${week}:</strong> ${dipendenti[empId]}</span>
-                                     <button class="btn-remove" onclick="rimuoviDalDB('${tipo}', ${week}, ${empId})">X</button>`;
-                    container.appendChild(div);
-                });
-            });
+            const container = document.getElementById(elementId); if (!container) return; container.innerHTML = ''; let hasItems = false;
+            Object.keys(db).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(week => { db[week].forEach(empId => { hasItems = true; container.innerHTML += `<div class="db-item"><span><strong>Sett. ${week}:</strong> ${dipendenti[empId]}</span><button class="btn-remove" onclick="rimuoviDalDB('${tipo}', ${week}, ${empId})">X</button></div>`; }); });
             if(!hasItems) container.innerHTML = '<span style="color: #94a3b8;">Nessuna regola inserita.</span>';
         };
-
-        renderList(db_weekends, 'lista-weekend', 'weekend');
-        renderList(db_ferie, 'lista-ferie', 'ferie');
+        renderList(db_weekends, 'lista-weekend', 'weekend'); renderList(db_ferie, 'lista-ferie', 'ferie');
     }
 
-    function parseLocalDate(dateStr) {
-        const parts = dateStr.split('-');
-        return new Date(parts[0], parts[1] - 1, parts[2]);
-    }
+    function parseLocalDate(dateStr) { const parts = dateStr.split('-'); return new Date(parts[0], parts[1] - 1, parts[2]); }
 
     function getIsoWeeksInMonth(year, month) {
-        let weeks = new Set();
-        let date = new Date(year, month - 1, 1);
+        let weeks = new Set(); let date = new Date(year, month - 1, 1);
         while (date.getMonth() === month - 1) {
-            let target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-            let dayNr = (date.getDay() + 6) % 7;
-            target.setDate(target.getDate() - dayNr + 3);
-            let firstThursday = target.getTime();
-            target.setMonth(0, 1);
-            if (target.getDay() !== 4) {
-                target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-            }
-            let isoWeek = 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
-            weeks.add(isoWeek);
-            date.setDate(date.getDate() + 1);
+            let target = new Date(date.getFullYear(), date.getMonth(), date.getDate()); let dayNr = (date.getDay() + 6) % 7; target.setDate(target.getDate() - dayNr + 3);
+            let firstThursday = target.getTime(); target.setMonth(0, 1);
+            if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+            weeks.add(1 + Math.ceil((firstThursday - target.getTime()) / 604800000)); date.setDate(date.getDate() + 1);
         }
         return Array.from(weeks);
     }
 
     function generateWeekCheckboxes() {
-        const yearElem = document.getElementById('year');
-        const monthElem = document.getElementById('month');
-        if (!yearElem || !monthElem) return;
-        
-        const year = parseInt(yearElem.value);
-        const month = parseInt(monthElem.value);
-        const weeks = getIsoWeeksInMonth(year, month);
-        
-        const container = document.getElementById('checkbox-group');
-        if (!container) return;
-        container.innerHTML = ''; 
-        
-        weeks.forEach(wk => {
-            const div = document.createElement('div');
-            div.className = 'checkbox-item';
-            div.innerHTML = `<input type="checkbox" name="iso_week" value="${wk}" checked> Settimana ${wk}`;
-            container.appendChild(div);
-        });
+        const yearElem = document.getElementById('year'); const monthElem = document.getElementById('month'); if (!yearElem || !monthElem) return;
+        const weeks = getIsoWeeksInMonth(parseInt(yearElem.value), parseInt(monthElem.value));
+        const container = document.getElementById('checkbox-group'); if (!container) return; container.innerHTML = '';
+        weeks.forEach(wk => { container.innerHTML += `<div class="checkbox-item"><input type="checkbox" name="iso_week" value="${wk}" checked> Settimana ${wk}</div>`; });
     }
 
     async function calcolaTurni() {
         const year = parseInt(document.getElementById('year').value);
-        const checkboxes = document.querySelectorAll('input[name="iso_week"]:checked');
-        const target_weeks = Array.from(checkboxes).map(cb => parseInt(cb.value));
-        
-        if(target_weeks.length === 0) {
-            showToast("Seleziona almeno una settimana!", "error");
-            return;
-        }
-
-        document.getElementById('loading').style.display = 'block';
-        document.getElementById('results').innerHTML = '';
-        document.getElementById('btn-modifica').style.display = 'none';
-        document.getElementById('btn-salva').style.display = 'none';
-
+        const checkboxes = document.querySelectorAll('input[name="iso_week"]:checked'); const target_weeks = Array.from(checkboxes).map(cb => parseInt(cb.value));
+        if(target_weeks.length === 0) return showToast("Seleziona almeno una settimana!", "error");
+        document.getElementById('loading').style.display = 'block'; document.getElementById('results').innerHTML = ''; document.getElementById('btn-modifica').style.display = 'none'; document.getElementById('btn-salva').style.display = 'none';
         try {
-            const response = await fetch('/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ year: year, target_weeks: target_weeks })
-            });
-
-            const result = await response.json();
-            document.getElementById('loading').style.display = 'none';
-
-            if (result.status === "success") {
-                renderTable(result.data, target_weeks);
-                document.getElementById('btn-modifica').style.display = 'inline-block';
-                setUnsavedStatus(true);
-                showToast("Turni calcolati! La griglia non è ancora salvata nel DB.", "success");
-            } else {
-                showToast("Errore nel calcolo: " + result.message, "error");
-            }
-        } catch (error) {
-            document.getElementById('loading').style.display = 'none';
-            showToast("Errore di connessione al server", "error");
-        }
+            const response = await fetch('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year: year, target_weeks: target_weeks }) });
+            const result = await response.json(); document.getElementById('loading').style.display = 'none';
+            if (result.status === "success") { renderTable(result.data, target_weeks); document.getElementById('btn-modifica').style.display = 'inline-block'; setUnsavedStatus(true); showToast("Turni calcolati! La griglia non è ancora salvata nel DB.", "success"); } 
+            else { showToast("Errore nel calcolo: " + result.message, "error"); }
+        } catch (error) { document.getElementById('loading').style.display = 'none'; showToast("Errore di connessione al server", "error"); }
     }
 
     function abilitaModifica() {
-        const labels = document.querySelectorAll('.shift-label');
-        const selects = document.querySelectorAll('.shift-select');
-        
-        labels.forEach(l => l.style.display = 'none');
-        selects.forEach(s => s.style.display = 'block');
-        
-        document.getElementById('btn-modifica').style.display = 'none';
-        document.getElementById('btn-salva').style.display = 'inline-block';
-        showToast("Modalità modifica abilitata.", "info");
+        document.querySelectorAll('.shift-label').forEach(l => l.style.display = 'none');
+        document.querySelectorAll('.shift-select').forEach(s => s.style.display = 'block');
+        document.getElementById('btn-modifica').style.display = 'none'; document.getElementById('btn-salva').style.display = 'inline-block'; showToast("Modalità modifica abilitata.", "info");
     }
 
     async function salvaGriglia() {
-        const selects = document.querySelectorAll('.shift-select');
-        if(selects.length === 0) {
-            showToast("Nessuna griglia da salvare", "error");
-            return;
-        }
-
-        let scheduleToSave = [];
-        selects.forEach(sel => {
-            scheduleToSave.push({
-                date: sel.dataset.date,
-                employee_id: parseInt(sel.dataset.emp),
-                shift: sel.value
-            });
-        });
-
+        const selects = document.querySelectorAll('.shift-select'); if(selects.length === 0) return showToast("Nessuna griglia da salvare", "error");
+        let scheduleToSave = []; selects.forEach(sel => { scheduleToSave.push({ date: sel.dataset.date, employee_id: parseInt(sel.dataset.emp), shift: sel.value }); });
         try {
-            const response = await fetch('/api/save_schedule', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ schedule: scheduleToSave })
-            });
+            const response = await fetch('/api/save_schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: scheduleToSave }) });
             const result = await response.json();
             if(result.success) {
                 showToast("Griglia salvata nel database cloud!", "success");
-                
-                // Torna alla vista lettura aggiornando le etichette con i valori appena salvati
                 selects.forEach(sel => {
-                    const cellContainer = sel.parentElement;
-                    const label = cellContainer.querySelector('.shift-label');
-                    label.innerText = sel.value;
-                    label.className = `shift-label ${getStyleClass(sel.value)}`;
-                    
-                    sel.style.display = 'none';
-                    label.style.display = 'block';
+                    const label = sel.parentElement.querySelector('.shift-label');
+                    label.innerText = sel.value; label.className = `shift-label ${getStyleClass(sel.value)}`;
+                    sel.style.display = 'none'; label.style.display = 'block';
                 });
-                
-                document.getElementById('btn-salva').style.display = 'none';
-                document.getElementById('btn-modifica').style.display = 'inline-block';
-                setUnsavedStatus(false);
+                document.getElementById('btn-salva').style.display = 'none'; document.getElementById('btn-modifica').style.display = 'inline-block'; setUnsavedStatus(false);
             }
-        } catch(e) {
-            showToast("Errore durante il salvataggio", "error");
-        }
+        } catch(e) { showToast("Errore durante il salvataggio", "error"); }
     }
 
     async function caricaGrigliaSalvata() {
-        document.getElementById('loading').style.display = 'block';
-        document.getElementById('results').innerHTML = '';
-        document.getElementById('btn-modifica').style.display = 'none';
-        document.getElementById('btn-salva').style.display = 'none';
-
+        document.getElementById('loading').style.display = 'block'; document.getElementById('results').innerHTML = ''; document.getElementById('btn-modifica').style.display = 'none'; document.getElementById('btn-salva').style.display = 'none';
         try {
-            const response = await fetch('/api/get_schedule');
-            const result = await response.json();
-            document.getElementById('loading').style.display = 'none';
-
+            const response = await fetch('/api/get_schedule'); const result = await response.json(); document.getElementById('loading').style.display = 'none';
             if (result.success && result.data.length > 0) {
-                const tutteLeDate = [...new Set(result.data.map(item => item.date))].sort();
-                let target_weeks = new Set();
+                const tutteLeDate = [...new Set(result.data.map(item => item.date))].sort(); let target_weeks = new Set();
                 tutteLeDate.forEach(dStr => {
-                    let dObj = parseLocalDate(dStr);
-                    let target = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
-                    let dayNr = (dObj.getDay() + 6) % 7;
-                    target.setDate(target.getDate() - dayNr + 3);
-                    let firstThursday = target.getTime();
-                    target.setMonth(0, 1);
-                    if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-                    let isoWeek = 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
-                    target_weeks.add(isoWeek);
+                    let dObj = parseLocalDate(dStr); let target = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate()); let dayNr = (dObj.getDay() + 6) % 7; target.setDate(target.getDate() - dayNr + 3);
+                    let firstThursday = target.getTime(); target.setMonth(0, 1); if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                    target_weeks.add(1 + Math.ceil((firstThursday - target.getTime()) / 604800000));
                 });
-                
-                renderTable(result.data, Array.from(target_weeks).sort((a,b)=>a-b));
-                
-                document.getElementById('btn-modifica').style.display = 'inline-block';
-                setUnsavedStatus(false);
-                showToast("Griglia salvata caricata con successo", "info");
-            } else {
-                showToast("Nessun turno salvato nel database", "info");
-            }
-        } catch (error) {
-            document.getElementById('loading').style.display = 'none';
-            showToast("Errore nel caricamento dei dati", "error");
-        }
+                renderTable(result.data, Array.from(target_weeks).sort((a,b)=>a-b)); document.getElementById('btn-modifica').style.display = 'inline-block'; setUnsavedStatus(false); showToast("Griglia salvata caricata con successo", "info");
+            } else { showToast("Nessun turno salvato nel database", "info"); }
+        } catch (error) { document.getElementById('loading').style.display = 'none'; showToast("Errore nel caricamento dei dati", "error"); }
     }
 
     function setUnsavedStatus(unsaved) {
         document.querySelectorAll('.badge-status').forEach(badge => {
-            if (unsaved) {
-                badge.innerText = "Non Salvato";
-                badge.className = "badge-status unsaved";
-            } else {
-                badge.innerText = "Salvato nel DB";
-                badge.className = "badge-status saved";
-            }
+            badge.innerText = unsaved ? "Non Salvato" : "Salvato nel DB"; badge.className = unsaved ? "badge-status unsaved" : "badge-status saved";
         });
     }
 
-    function getStyleClass(val) {
-        if (val === "Riposo") return "turno-riposo-style";
-        if (val === "Ferie") return "turno-ferie-style";
-        return "turno-lavoro-style";
-    }
+    function getStyleClass(val) { if (val === "Riposo") return "turno-riposo-style"; if (val === "Ferie") return "turno-ferie-style"; return "turno-lavoro-style"; }
 
-    function aggiornaColoreEContatori(selectElem) {
-        const val = selectElem.value;
-        selectElem.className = `shift-select ${getStyleClass(val)}`;
-        setUnsavedStatus(true);
-        ricalcolaPresidiGiorno(selectElem.dataset.date);
-    }
+    function aggiornaColoreEContatori(selectElem) { selectElem.className = `shift-select ${getStyleClass(selectElem.value)}`; setUnsavedStatus(true); ricalcolaPresidiGiorno(selectElem.dataset.date); }
 
     function ricalcolaPresidiGiorno(dateStr) {
-        const daySelects = document.querySelectorAll(`select[data-date="${dateStr}"]`);
-        let presenti = 0;
-        let aperture = 0;
-        let chiusure = 0;
-
-        daySelects.forEach(sel => {
-            const v = sel.value;
-            if (v !== "Riposo" && v !== "Ferie") {
-                presenti++;
-                if (v.includes("09:30")) aperture++;
-                if (v.includes("21:00")) chiusure++;
-            }
+        let presenti = 0, aperture = 0, chiusure = 0;
+        document.querySelectorAll(`select[data-date="${dateStr}"]`).forEach(sel => {
+            const v = sel.value; if (v !== "Riposo" && v !== "Ferie") { presenti++; if (v.includes("09:30")) aperture++; if (v.includes("21:00")) chiusure++; }
         });
-
         const summaryCell = document.getElementById(`summary-${dateStr}`);
         if (summaryCell) {
             summaryCell.innerHTML = `<strong>${presenti} Attivi</strong><br>AP: ${aperture} | CH: ${chiusure}`;
-            
-            const dObj = parseLocalDate(dateStr);
-            const dayOfWeek = (dObj.getDay() + 6) % 7; 
-            
+            const dObj = parseLocalDate(dateStr); const dayOfWeek = (dObj.getDay() + 6) % 7; 
             const minRequired = (dayOfWeek === 3 || dayOfWeek === 4) ? 4 : 5;
-            if (presenti < minRequired || aperture < 2 || chiusure < 2) {
-                summaryCell.className = "summary-cell warning";
-            } else {
-                summaryCell.className = "summary-cell";
-            }
+            summaryCell.className = (presenti < minRequired || aperture < 2 || chiusure < 2) ? "summary-cell warning" : "summary-cell";
         }
     }
 
     function renderTable(data, weeks) {
-        const resultsDiv = document.getElementById('results');
-        if (!resultsDiv) return;
-        const orari = {};
-        
-        data.forEach(item => {
-            if(!orari[item.employee_id]) orari[item.employee_id] = {};
-            orari[item.employee_id][item.date] = item.shift;
-        });
-
+        const resultsDiv = document.getElementById('results'); if (!resultsDiv) return;
+        const orari = {}; data.forEach(item => { if(!orari[item.employee_id]) orari[item.employee_id] = {}; orari[item.employee_id][item.date] = item.shift; });
         const tutteLeDate = [...new Set(data.map(item => item.date))].sort();
 
         for (let i = 0; i < tutteLeDate.length; i += 7) {
-            const giorniSettimana = tutteLeDate.slice(i, i + 7);
-            
-            let currentIsoWeek = "Sconosciuta";
+            const giorniSettimana = tutteLeDate.slice(i, i + 7); let currentIsoWeek = "Sconosciuta";
             if (giorniSettimana.length > 0) {
-                 let firstDateStr = giorniSettimana[0];
-                 let dObj = parseLocalDate(firstDateStr);
-                 let target = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
-                 let dayNr = (dObj.getDay() + 6) % 7;
-                 target.setDate(target.getDate() - dayNr + 3);
-                 let firstThursday = target.getTime();
-                 target.setMonth(0, 1);
-                 if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                 let dObj = parseLocalDate(giorniSettimana[0]); let target = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate()); let dayNr = (dObj.getDay() + 6) % 7; target.setDate(target.getDate() - dayNr + 3);
+                 let firstThursday = target.getTime(); target.setMonth(0, 1); if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
                  currentIsoWeek = 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
             }
 
-            const weekHeader = document.createElement('div');
-            weekHeader.className = 'week-header';
-            weekHeader.innerHTML = `<span>Settimana ISO ${currentIsoWeek}</span> <span class="badge-status saved">Salvato nel DB</span>`;
-            resultsDiv.appendChild(weekHeader);
-
-            let tableHTML = `<table class="grid-table">
-                <thead>
-                    <tr>
-                        <th style="width: 15%;">Dipendente</th>`;
-            
+            const weekHeader = document.createElement('div'); weekHeader.className = 'week-header'; weekHeader.innerHTML = `<span>Settimana ISO ${currentIsoWeek}</span> <span class="badge-status saved">Salvato nel DB</span>`; resultsDiv.appendChild(weekHeader);
+            let tableHTML = `<table class="grid-table"><thead><tr><th style="width: 15%;">Dipendente</th>`;
             const nomiGiorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
-            giorniSettimana.forEach((dataStr, index) => {
-                const dObj = parseLocalDate(dataStr);
-                const dataFormat = dObj.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
-                tableHTML += `<th style="width: 12.1%;">${nomiGiorni[index]}<br><small>${dataFormat}</small></th>`;
-            });
+            giorniSettimana.forEach((dataStr, index) => { const dFormat = parseLocalDate(dataStr).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }); tableHTML += `<th style="width: 12.1%;">${nomiGiorni[index]}<br><small>${dFormat}</small></th>`; });
             tableHTML += `</tr></thead><tbody>`;
 
             for (let empId = 1; empId <= 9; empId++) {
                 tableHTML += `<tr><td><strong>${dipendenti[empId]}</strong></td>`;
-                
                 giorniSettimana.forEach(dataStr => {
-                    let turno = orari[empId] && orari[empId][dataStr] ? orari[empId][dataStr] : "Riposo";
-                    let styleClass = getStyleClass(turno);
-                    
-                    let optionsHTML = '';
-                    SHIFT_OPTIONS.forEach(opt => {
-                        let selected = (opt === turno) ? 'selected' : '';
-                        optionsHTML += `<option value="${opt}" ${selected}>${opt}</option>`;
-                    });
-
-                    // Inseriamo contemporaneamente un'etichetta testo (visibile) e la select (nascosta)
-                    tableHTML += `<td>
-                        <span class="shift-label ${styleClass}">${turno}</span>
-                        <select class="shift-select ${styleClass}" data-emp="${empId}" data-date="${dataStr}" onchange="aggiornaColoreEContatori(this)">
-                            ${optionsHTML}
-                        </select>
-                    </td>`;
+                    let turno = orari[empId] && orari[empId][dataStr] ? orari[empId][dataStr] : "Riposo"; let styleClass = getStyleClass(turno);
+                    let optionsHTML = ''; SHIFT_OPTIONS.forEach(opt => { optionsHTML += `<option value="${opt}" ${(opt === turno) ? 'selected' : ''}>${opt}</option>`; });
+                    tableHTML += `<td><span class="shift-label ${styleClass}">${turno}</span><select class="shift-select ${styleClass}" data-emp="${empId}" data-date="${dataStr}" onchange="aggiornaColoreEContatori(this)">${optionsHTML}</select></td>`;
                 });
                 tableHTML += `</tr>`;
             }
-
             tableHTML += `<tr class="summary-row"><td>Copertura Giornaliera</td>`;
-            giorniSettimana.forEach(dataStr => {
-                tableHTML += `<td id="summary-${dataStr}" class="summary-cell">Calcolo...</td>`;
-            });
-            tableHTML += `</tr>`;
-
-            tableHTML += `</tbody></table>`;
-            resultsDiv.innerHTML += tableHTML;
-
+            giorniSettimana.forEach(dataStr => { tableHTML += `<td id="summary-${dataStr}" class="summary-cell">Calcolo...</td>`; });
+            tableHTML += `</tr></tbody></table>`; resultsDiv.innerHTML += tableHTML;
             giorniSettimana.forEach(dataStr => ricalcolaPresidiGiorno(dataStr));
         }
+    }
+
+    // ========================================================
+    // LOGICA GRAFICI MULTIPLI DASHBOARD EQUITÀ (9 GRAFICI)
+    // ========================================================
+    function clearCharts() {
+        for (let key in chartInstances) {
+            if (chartInstances[key]) { chartInstances[key].destroy(); }
+        }
+        chartInstances = {};
     }
 
     async function loadEquityAnalytics() {
         try {
             const response = await fetch('/api/analytics/equity');
             const result = await response.json();
-
             if (!result.success) return;
 
-            const labels = result.data.map(item => item.name);
-            const dataChiusure = result.data.map(item => item.chiusure);
-            const dataWeekend = result.data.map(item => item.weekend);
-            const dataAperture = result.data.map(item => item.aperture);
+            clearCharts();
+            const dati = result.data;
+            const labelsDip = dati.map(d => d.name);
 
-            const canvas = document.getElementById('equityChart');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
-
-            if (equityChartInstance) {
-                equityChartInstance.destroy();
-            }
-
-            equityChartInstance = new Chart(ctx, {
+            // 1. Grafico Punteggio Globale
+            const scoreCtx = document.getElementById('scoreChart').getContext('2d');
+            chartInstances['score'] = new Chart(scoreCtx, {
                 type: 'bar',
                 data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Chiusure (21:00)',
-                            data: dataChiusure,
-                            backgroundColor: 'rgba(231, 76, 60, 0.85)',
-                            borderColor: '#c0392b',
-                            borderWidth: 1
-                        },
-                        {
-                            label: 'Presenze Weekend (Sab/Dom)',
-                            data: dataWeekend,
-                            backgroundColor: 'rgba(243, 156, 18, 0.85)',
-                            borderColor: '#d68910',
-                            borderWidth: 1
-                        },
-                        {
-                            label: 'Aperture (09:30)',
-                            data: dataAperture,
-                            backgroundColor: 'rgba(52, 152, 219, 0.85)',
-                            borderColor: '#2980b9',
-                            borderWidth: 1
-                        }
-                    ]
+                    labels: labelsDip,
+                    datasets: [{
+                        label: 'Punti Equità',
+                        data: dati.map(d => d.score),
+                        backgroundColor: '#8b5cf6',
+                        borderColor: '#6d28d9',
+                        borderWidth: 1
+                    }]
                 },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 2. Grafico Pattern Riposo
+            const patternCtx = document.getElementById('patternChart').getContext('2d');
+            const patternKeys = ["SAB_DOM", "GIO_VEN", "MAR_MER", "LUN_VEN", "LUN_GIO"];
+            const patternColors = ["#10b981", "#3b82f6", "#f59e0b", "#ec4899", "#64748b"];
+            
+            const patternDatasets = patternKeys.map((pKey, idx) => ({
+                label: pKey,
+                data: dati.map(d => d.patterns[pKey]),
+                backgroundColor: patternColors[idx]
+            }));
+
+            chartInstances['pattern'] = new Chart(patternCtx, {
+                type: 'bar',
+                data: { labels: labelsDip, datasets: patternDatasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: { stepSize: 1 }
-                        }
-                    },
-                    plugins: {
-                        legend: { position: 'top' },
-                        tooltip: { mode: 'index', intersect: false }
-                    }
+                    scales: { x: { stacked: true }, y: { stacked: true, ticks: { stepSize: 1 } } }
                 }
             });
+
+            // 3. I 7 Grafici Giornalieri
+            const shiftKeys = ["09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "15:00"];
+            const shiftColors = ["#38bdf8", "#0ea5e9", "#0284c7", "#fca5a5", "#ef4444", "#dc2626", "#16a34a"];
+            const dayNames = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
+
+            for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+                const dayCanvas = document.getElementById(`day${dayIdx}Chart`);
+                if (!dayCanvas) continue;
+                const dayCtx = dayCanvas.getContext('2d');
+                
+                const dayDatasets = shiftKeys.map((sKey, idx) => ({
+                    label: sKey,
+                    data: dati.map(d => d.days[dayIdx][sKey]),
+                    backgroundColor: shiftColors[idx]
+                }));
+
+                chartInstances[`day${dayIdx}`] = new Chart(dayCtx, {
+                    type: 'bar',
+                    data: { labels: labelsDip, datasets: dayDatasets },
+                    options: { 
+                        responsive: true,
+                        maintainAspectRatio: false, 
+                        plugins: {
+                            title: { display: true, text: dayNames[dayIdx], font: { size: 15 } },
+                            legend: { display: false }
+                        },
+                        scales: { x: { stacked: true }, y: { stacked: true, ticks: { stepSize: 1 } } }
+                    }
+                });
+            }
+
         } catch (error) {
-            console.error("Errore grafico equità:", error);
+            console.error("Errore nel caricamento delle analisi d'equità:", error);
         }
     }
 </script>
