@@ -4,14 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Piattaforma Gestione Turni</title>
-    <!-- Libreria Chart.js per la Dashboard di Equità -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
         .container { max-width: 1250px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         h1 { color: #1a2b4c; margin-top: 0; margin-bottom: 20px; font-size: 26px; border-bottom: 2px solid #f39c12; padding-bottom: 10px; }
         
-        /* BARRA SCHEDE (TAB) */
         .nav-tabs { display: flex; gap: 8px; border-bottom: 3px solid #1a2b4c; margin-bottom: 25px; }
         .tab-btn { background: #f1f5f9; color: #1a2b4c; border: 1px solid #cbd5e1; border-bottom: none; padding: 12px 22px; font-weight: bold; border-radius: 8px 8px 0 0; cursor: pointer; transition: 0.2s; font-size: 15px; }
         .tab-btn:hover { background: #e2e8f0; }
@@ -31,7 +29,6 @@
         .checkbox-group { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 15px; }
         .checkbox-item { display: flex; align-items: center; gap: 6px; font-weight: bold; background: white; padding: 6px 12px; border-radius: 6px; border: 1px solid #cbd5e1; }
         
-        /* GESTIONE DB */
         .db-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 15px; }
         .db-list { display: flex; gap: 20px; }
         .db-column { flex: 1; background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1; min-height: 100px; }
@@ -42,7 +39,6 @@
 
         .loading { display: none; font-weight: bold; color: #f39c12; margin-top: 15px; text-align: center; font-size: 18px; }
         
-        /* TABELLA GRIGLIA TURNI */
         table.grid-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; text-align: center; background: white; }
         table.grid-table th, table.grid-table td { border: 1px solid #cbd5e1; padding: 6px; }
         table.grid-table th { background-color: #1a2b4c; color: white; font-weight: 600; }
@@ -52,7 +48,6 @@
         .badge-status.unsaved { background-color: #fef08a; color: #854d0e; }
         .badge-status.saved { background-color: #bbf7d0; color: #166534; }
 
-        /* SELECT TURNI SULLA GRIGLIA */
         select.shift-select {
             width: 100%;
             padding: 7px 4px;
@@ -68,11 +63,9 @@
         .turno-ferie-select { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
         .turno-lavoro-select { background-color: #f0fdf4; color: #166534; border-color: #86efac; }
 
-        /* RIGA CONTATORI GIORNALIERI (FOOTER) */
         tr.summary-row td { background-color: #f8fafc; font-size: 11px; font-weight: bold; color: #475569; padding: 8px 4px; border-top: 2px solid #94a3b8; }
         td.summary-cell.warning { background-color: #fef2f2; color: #991b1b; border: 2px solid #ef4444; }
 
-        /* NOTIFICHE TOAST */
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
         .toast { padding: 12px 20px; border-radius: 6px; color: white; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 14px; min-width: 250px; animation: slideIn 0.3s ease; }
         .toast.success { background-color: #27ae60; }
@@ -89,14 +82,12 @@
 <div class="container">
     <h1>Piattaforma Gestione Turni</h1>
 
-    <!-- BARRA NAVIGAZIONE -->
     <div class="nav-tabs">
         <button class="tab-btn active" id="btn-tab-griglia" onclick="switchTab('griglia')">📅 Griglia Turni</button>
         <button class="tab-btn" id="btn-tab-db" onclick="switchTab('db')">⚙️ Gestione DB & Ferie</button>
         <button class="tab-btn" id="btn-tab-analytics" onclick="switchTab('analytics')">📊 Analisi Equità</button>
     </div>
 
-    <!-- SCHEDA 1: GRIGLIA TURNI -->
     <div id="tab-griglia" class="tab-content active">
         <div class="panel">
             <h3>Generazione & Calcolo</h3>
@@ -134,7 +125,6 @@
         <div id="results"></div>
     </div>
 
-    <!-- SCHEDA 2: GESTIONE DB -->
     <div id="tab-db" class="tab-content">
         <div class="panel">
             <h3>Riposi Weekend e Ferie</h3>
@@ -176,7 +166,6 @@
         </div>
     </div>
 
-    <!-- SCHEDA 3: ANALISI EQUITÀ -->
     <div id="tab-analytics" class="tab-content">
         <div class="panel">
             <h3>Analisi Equità Reale (Ultimi 90 Giorni)</h3>
@@ -189,4 +178,557 @@
 
 <script>
     const dipendenti = {
-        1: "Arena Caterina", 2: "De
+        1: "Arena Caterina", 2: "De Giacomo Giuseppe", 3: "Lucidi Danilo",
+        4: "Marono Alessia", 5: "Panariello Luigi", 6: "Paracuollo Mario",
+        7: "Quaranta Antonio", 8: "Scarrone Danilo", 9: "Squeglia Gaetana"
+    };
+
+    const SHIFT_OPTIONS = [
+        "Riposo",
+        "09:30 13:00 14:00 18:30",
+        "10:00 13:00 14:00 19:00",
+        "10:30 13:00 14:00 19:30",
+        "11:00 14:30 15:30 20:00",
+        "11:30 14:30 15:30 20:30",
+        "12:00 14:30 15:30 21:00",
+        "15:00 21:00",
+        "Ferie"
+    ];
+
+    let db_weekends = {}; 
+    let db_ferie = {}; 
+    let equityChartInstance = null;
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const selectDip = document.getElementById('db-dipendente');
+        const reqDip = document.getElementById('req-dipendente');
+        
+        if (selectDip && reqDip) {
+            selectDip.innerHTML = '';
+            reqDip.innerHTML = '';
+            for (let id in dipendenti) {
+                let opt = document.createElement('option');
+                opt.value = id;
+                opt.innerHTML = dipendenti[id];
+                selectDip.appendChild(opt);
+                
+                let optReq = document.createElement('option');
+                optReq.value = id;
+                optReq.innerHTML = dipendenti[id];
+                reqDip.appendChild(optReq);
+            }
+        }
+        cambioAnnoMese();
+    });
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerText = message;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+        const targetTab = document.getElementById(`tab-${tabName}`);
+        const targetBtn = document.getElementById(`btn-tab-${tabName}`);
+        if (targetTab && targetBtn) {
+            targetTab.classList.add('active');
+            targetBtn.classList.add('active');
+        }
+
+        if (tabName === 'analytics') {
+            loadEquityAnalytics();
+        }
+    }
+
+    function cambioAnnoMese() {
+        generateWeekCheckboxes();
+        caricaDatabaseDalServer();
+    }
+
+    async function caricaDatabaseDalServer() {
+        const yearElem = document.getElementById('year');
+        if (!yearElem) return;
+        const year = parseInt(yearElem.value);
+        try {
+            const resW = await fetch(`/api/weekends?year=${year}`);
+            const jsonW = await resW.json();
+            db_weekends = {};
+            if(jsonW.success) {
+                jsonW.data.forEach(item => {
+                    if(!db_weekends[item.iso_week]) db_weekends[item.iso_week] = [];
+                    db_weekends[item.iso_week].push(item.employee_id);
+                });
+            }
+
+            const resF = await fetch(`/api/ferie?year=${year}`);
+            const jsonF = await resF.json();
+            db_ferie = {};
+            if(jsonF.success) {
+                jsonF.data.forEach(item => {
+                    if(!db_ferie[item.iso_week]) db_ferie[item.iso_week] = [];
+                    db_ferie[item.iso_week].push(item.employee_id);
+                });
+            }
+            aggiornaVisualizzazioneDB();
+        } catch (error) {
+            showToast("Errore lettura DB", "error");
+        }
+    }
+
+    async function aggiungiAlDB() {
+        const tipo = document.getElementById('db-tipo').value;
+        const empId = parseInt(document.getElementById('db-dipendente').value);
+        const week = parseInt(document.getElementById('db-week').value);
+        const year = parseInt(document.getElementById('year').value);
+
+        if(!week || week < 1 || week > 52) {
+            showToast("Inserisci un numero di settimana ISO valido (1-52)", "error");
+            return;
+        }
+
+        const endpoint = tipo === 'weekend' ? '/api/weekends' : '/api/ferie';
+        await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: empId, year: year, iso_week: week })
+        });
+
+        showToast("Regola aggiunta al DB", "success");
+        caricaDatabaseDalServer();
+    }
+
+    async function aggiungiRichiesta() {
+        const dateVal = document.getElementById('req-date').value;
+        const empId = parseInt(document.getElementById('req-dipendente').value);
+        const turnoVal = document.getElementById('req-turno').value;
+
+        if(!dateVal) {
+            showToast("Seleziona una data per la richiesta", "error");
+            return;
+        }
+
+        try {
+            await fetch('/api/richieste', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employee_id: empId, req_date: dateVal, shift_name: turnoVal })
+            });
+            showToast("Richiesta salvata con successo", "success");
+        } catch (error) {
+            showToast("Errore nel salvataggio della richiesta", "error");
+        }
+    }
+
+    async function rimuoviDalDB(tipo, week, empId) {
+        const year = parseInt(document.getElementById('year').value);
+        const endpoint = tipo === 'weekend' ? '/api/weekends' : '/api/ferie';
+
+        await fetch(endpoint, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: empId, year: year, iso_week: week })
+        });
+
+        showToast("Regola rimossa", "info");
+        caricaDatabaseDalServer();
+    }
+
+    function aggiornaVisualizzazioneDB() {
+        const renderList = (db, elementId, tipo) => {
+            const container = document.getElementById(elementId);
+            if (!container) return;
+            container.innerHTML = '';
+            let hasItems = false;
+
+            const sortedWeeks = Object.keys(db).sort((a, b) => parseInt(a) - parseInt(b));
+            sortedWeeks.forEach(week => {
+                db[week].forEach(empId => {
+                    hasItems = true;
+                    let div = document.createElement('div');
+                    div.className = 'db-item';
+                    div.innerHTML = `<span><strong>Sett. ${week}:</strong> ${dipendenti[empId]}</span>
+                                     <button class="btn-remove" onclick="rimuoviDalDB('${tipo}', ${week}, ${empId})">X</button>`;
+                    container.appendChild(div);
+                });
+            });
+            if(!hasItems) container.innerHTML = '<span style="color: #94a3b8;">Nessuna regola inserita.</span>';
+        };
+
+        renderList(db_weekends, 'lista-weekend', 'weekend');
+        renderList(db_ferie, 'lista-ferie', 'ferie');
+    }
+
+    function parseLocalDate(dateStr) {
+        const parts = dateStr.split('-');
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+
+    function getIsoWeeksInMonth(year, month) {
+        let weeks = new Set();
+        let date = new Date(year, month - 1, 1);
+        while (date.getMonth() === month - 1) {
+            let target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            let dayNr = (date.getDay() + 6) % 7;
+            target.setDate(target.getDate() - dayNr + 3);
+            let firstThursday = target.getTime();
+            target.setMonth(0, 1);
+            if (target.getDay() !== 4) {
+                target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+            }
+            let isoWeek = 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
+            weeks.add(isoWeek);
+            date.setDate(date.getDate() + 1);
+        }
+        return Array.from(weeks);
+    }
+
+    function generateWeekCheckboxes() {
+        const yearElem = document.getElementById('year');
+        const monthElem = document.getElementById('month');
+        if (!yearElem || !monthElem) return;
+        
+        const year = parseInt(yearElem.value);
+        const month = parseInt(monthElem.value);
+        const weeks = getIsoWeeksInMonth(year, month);
+        
+        const container = document.getElementById('checkbox-group');
+        if (!container) return;
+        container.innerHTML = ''; 
+        
+        weeks.forEach(wk => {
+            const div = document.createElement('div');
+            div.className = 'checkbox-item';
+            div.innerHTML = `<input type="checkbox" name="iso_week" value="${wk}" checked> Settimana ${wk}`;
+            container.appendChild(div);
+        });
+    }
+
+    async function calcolaTurni() {
+        const year = parseInt(document.getElementById('year').value);
+        const checkboxes = document.querySelectorAll('input[name="iso_week"]:checked');
+        const target_weeks = Array.from(checkboxes).map(cb => parseInt(cb.value));
+        
+        if(target_weeks.length === 0) {
+            showToast("Seleziona almeno una settimana!", "error");
+            return;
+        }
+
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results').innerHTML = '';
+        document.getElementById('btn-salva').style.display = 'none';
+
+        try {
+            const response = await fetch('/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year: year, target_weeks: target_weeks })
+            });
+
+            const result = await response.json();
+            document.getElementById('loading').style.display = 'none';
+
+            if (result.status === "success") {
+                renderTable(result.data, target_weeks);
+                document.getElementById('btn-salva').style.display = 'inline-block';
+                setUnsavedStatus(true);
+                showToast("Turni calcolati! Puoi modificarli prima di salvare.", "success");
+            } else {
+                showToast("Errore nel calcolo: " + result.message, "error");
+            }
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            showToast("Errore di connessione al server", "error");
+        }
+    }
+
+    async function salvaGriglia() {
+        const selects = document.querySelectorAll('.shift-select');
+        if(selects.length === 0) {
+            showToast("Nessuna griglia da salvare", "error");
+            return;
+        }
+
+        let scheduleToSave = [];
+        selects.forEach(sel => {
+            scheduleToSave.push({
+                date: sel.dataset.date,
+                employee_id: parseInt(sel.dataset.emp),
+                shift: sel.value
+            });
+        });
+
+        try {
+            const response = await fetch('/api/save_schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ schedule: scheduleToSave })
+            });
+            const result = await response.json();
+            if(result.success) {
+                showToast("Griglia salvata nel database cloud!", "success");
+                setUnsavedStatus(false);
+            }
+        } catch(e) {
+            showToast("Errore durante il salvataggio", "error");
+        }
+    }
+
+    async function caricaGrigliaSalvata() {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('results').innerHTML = '';
+        document.getElementById('btn-salva').style.display = 'none';
+
+        try {
+            const response = await fetch('/api/get_schedule');
+            const result = await response.json();
+            document.getElementById('loading').style.display = 'none';
+
+            if (result.success && result.data.length > 0) {
+                const tutteLeDate = [...new Set(result.data.map(item => item.date))].sort();
+                let target_weeks = new Set();
+                tutteLeDate.forEach(dStr => {
+                    let dObj = parseLocalDate(dStr);
+                    let target = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
+                    let dayNr = (dObj.getDay() + 6) % 7;
+                    target.setDate(target.getDate() - dayNr + 3);
+                    let firstThursday = target.getTime();
+                    target.setMonth(0, 1);
+                    if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                    let isoWeek = 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
+                    target_weeks.add(isoWeek);
+                });
+                
+                renderTable(result.data, Array.from(target_weeks).sort((a,b)=>a-b));
+                setUnsavedStatus(false);
+                showToast("Griglia salvata caricata con successo", "info");
+            } else {
+                showToast("Nessun turno salvato nel database", "info");
+            }
+        } catch (error) {
+            document.getElementById('loading').style.display = 'none';
+            showToast("Errore nel caricamento dei dati", "error");
+        }
+    }
+
+    function setUnsavedStatus(unsaved) {
+        document.querySelectorAll('.badge-status').forEach(badge => {
+            if (unsaved) {
+                badge.innerText = "Modificato (Non Salvato)";
+                badge.className = "badge-status unsaved";
+            } else {
+                badge.innerText = "Salvato nel DB";
+                badge.className = "badge-status saved";
+            }
+        });
+    }
+
+    function aggiornaColoreEContatori(selectElem) {
+        const val = selectElem.value;
+        selectElem.className = "shift-select";
+        if (val === "Riposo") {
+            selectElem.classList.add("turno-riposo-select");
+        } else if (val === "Ferie") {
+            selectElem.classList.add("turno-ferie-select");
+        } else {
+            selectElem.classList.add("turno-lavoro-select");
+        }
+
+        setUnsavedStatus(true);
+        
+        const dateStr = selectElem.dataset.date;
+        ricalcolaPresidiGiorno(dateStr);
+    }
+
+    function ricalcolaPresidiGiorno(dateStr) {
+        const daySelects = document.querySelectorAll(`select[data-date="${dateStr}"]`);
+        let presenti = 0;
+        let aperture = 0;
+        let chiusure = 0;
+
+        daySelects.forEach(sel => {
+            const v = sel.value;
+            if (v !== "Riposo" && v !== "Ferie") {
+                presenti++;
+                if (v.includes("09:30")) aperture++;
+                if (v.includes("21:00")) chiusure++;
+            }
+        });
+
+        const summaryCell = document.getElementById(`summary-${dateStr}`);
+        if (summaryCell) {
+            summaryCell.innerHTML = `<strong>${presenti} Attivi</strong><br>AP: ${aperture} | CH: ${chiusure}`;
+            
+            const dObj = parseLocalDate(dateStr);
+            const dayOfWeek = (dObj.getDay() + 6) % 7; 
+            
+            const minRequired = (dayOfWeek === 3 || dayOfWeek === 4) ? 4 : 5;
+            if (presenti < minRequired || aperture < 2 || chiusure < 2) {
+                summaryCell.className = "summary-cell warning";
+            } else {
+                summaryCell.className = "summary-cell";
+            }
+        }
+    }
+
+    function renderTable(data, weeks) {
+        const resultsDiv = document.getElementById('results');
+        if (!resultsDiv) return;
+        const orari = {};
+        
+        data.forEach(item => {
+            if(!orari[item.employee_id]) orari[item.employee_id] = {};
+            orari[item.employee_id][item.date] = item.shift;
+        });
+
+        const tutteLeDate = [...new Set(data.map(item => item.date))].sort();
+
+        for (let i = 0; i < tutteLeDate.length; i += 7) {
+            const giorniSettimana = tutteLeDate.slice(i, i + 7);
+            
+            let currentIsoWeek = "Sconosciuta";
+            if (giorniSettimana.length > 0) {
+                 let firstDateStr = giorniSettimana[0];
+                 let dObj = parseLocalDate(firstDateStr);
+                 let target = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
+                 let dayNr = (dObj.getDay() + 6) % 7;
+                 target.setDate(target.getDate() - dayNr + 3);
+                 let firstThursday = target.getTime();
+                 target.setMonth(0, 1);
+                 if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+                 currentIsoWeek = 1 + Math.ceil((firstThursday - target.getTime()) / 604800000);
+            }
+
+            const weekHeader = document.createElement('div');
+            weekHeader.className = 'week-header';
+            weekHeader.innerHTML = `<span>Settimana ISO ${currentIsoWeek}</span> <span class="badge-status saved">Salvato nel DB</span>`;
+            resultsDiv.appendChild(weekHeader);
+
+            let tableHTML = `<table class="grid-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">Dipendente</th>`;
+            
+            const nomiGiorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
+            giorniSettimana.forEach((dataStr, index) => {
+                const dObj = parseLocalDate(dataStr);
+                const dataFormat = dObj.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' });
+                tableHTML += `<th style="width: 12.1%;">${nomiGiorni[index]}<br><small>${dataFormat}</small></th>`;
+            });
+            tableHTML += `</tr></thead><tbody>`;
+
+            for (let empId = 1; empId <= 9; empId++) {
+                tableHTML += `<tr><td><strong>${dipendenti[empId]}</strong></td>`;
+                
+                giorniSettimana.forEach(dataStr => {
+                    let turno = orari[empId] && orari[empId][dataStr] ? orari[empId][dataStr] : "Riposo";
+                    
+                    let selectClass = "turno-lavoro-select";
+                    if(turno === "Riposo") selectClass = "turno-riposo-select";
+                    if(turno === "Ferie") selectClass = "turno-ferie-select";
+                    
+                    let optionsHTML = '';
+                    SHIFT_OPTIONS.forEach(opt => {
+                        let selected = (opt === turno) ? 'selected' : '';
+                        optionsHTML += `<option value="${opt}" ${selected}>${opt}</option>`;
+                    });
+
+                    tableHTML += `<td>
+                        <select class="shift-select ${selectClass}" data-emp="${empId}" data-date="${dataStr}" onchange="aggiornaColoreEContatori(this)">
+                            ${optionsHTML}
+                        </select>
+                    </td>`;
+                });
+                tableHTML += `</tr>`;
+            }
+
+            tableHTML += `<tr class="summary-row"><td>Copertura Giornaliera</td>`;
+            giorniSettimana.forEach(dataStr => {
+                tableHTML += `<td id="summary-${dataStr}" class="summary-cell">Calcolo...</td>`;
+            });
+            tableHTML += `</tr>`;
+
+            tableHTML += `</tbody></table>`;
+            resultsDiv.innerHTML += tableHTML;
+
+            giorniSettimana.forEach(dataStr => ricalcolaPresidiGiorno(dataStr));
+        }
+    }
+
+    async function loadEquityAnalytics() {
+        try {
+            const response = await fetch('/api/analytics/equity');
+            const result = await response.json();
+
+            if (!result.success) return;
+
+            const labels = result.data.map(item => item.name);
+            const dataChiusure = result.data.map(item => item.chiusure);
+            const dataWeekend = result.data.map(item => item.weekend);
+            const dataAperture = result.data.map(item => item.aperture);
+
+            const canvas = document.getElementById('equityChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            if (equityChartInstance) {
+                equityChartInstance.destroy();
+            }
+
+            equityChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Chiusure (21:00)',
+                            data: dataChiusure,
+                            backgroundColor: 'rgba(231, 76, 60, 0.85)',
+                            borderColor: '#c0392b',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Presenze Weekend (Sab/Dom)',
+                            data: dataWeekend,
+                            backgroundColor: 'rgba(243, 156, 18, 0.85)',
+                            borderColor: '#d68910',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Aperture (09:30)',
+                            data: dataAperture,
+                            backgroundColor: 'rgba(52, 152, 219, 0.85)',
+                            borderColor: '#2980b9',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1 }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { mode: 'index', intersect: false }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error("Errore grafico equità:", error);
+        }
+    }
+</script>
+
+</body>
+</html>
