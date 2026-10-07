@@ -105,6 +105,7 @@ class TurnoGenerato(BaseModel):
 class SalvaScheduleRequest(BaseModel):
     schedule: List[TurnoGenerato]
 
+# Rotta principale con supporto GET e HEAD per Render
 @app.get("/")
 @app.head("/")
 async def serve_frontend():
@@ -205,7 +206,7 @@ def get_schedule():
         })
     return {"success": True, "data": schedule}
 
-# --- ESPORTAZIONE EXCEL ---
+# --- NUOVA ROTTA: ESPORTAZIONE EXCEL ---
 @app.get("/api/export_excel")
 def export_excel(year: int = 2026):
     conn = get_db_connection()
@@ -356,6 +357,7 @@ def export_excel(year: int = 2026):
     headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
 
+# --- LOGICA ANALYTICS A PUNTEGGIO E GIORNALIERA ---
 @app.get("/api/analytics/equity")
 def get_equity_analytics():
     conn = get_db_connection()
@@ -379,8 +381,13 @@ def get_equity_analytics():
         } for emp_id in range(1, 10)
     }
 
+    # Punteggi per Pattern Riposo
     pts_pattern = {"SAB_DOM": 10, "GIO_VEN": 5, "MAR_MER": 4, "LUN_VEN": 3, "LUN_GIO": 1}
+    
+    # Punteggi per Turni Feriali (Lunedì - Venerdì)
     pts_weekday = {"09:30": 10, "10:00": 9, "15:00": 8, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": 1}
+    
+    # Punteggi per Turni Festivi (Sabato e Domenica)
     pts_weekend = {"09:30": 20, "10:00": 9, "15:00": 2, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": -10}
 
     REST_PATTERNS_IDX = {
@@ -398,8 +405,11 @@ def get_equity_analytics():
             if k in s_name: return k
         return None
 
+    # Assegnazione punteggi per ore
     for emp_id, date_str, shift_name in rows:
-        if emp_id not in stats: continue
+        if emp_id not in stats:
+            continue
+
         d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
         day_idx = d_obj.weekday()
         iso_year, iso_week, _ = d_obj.isocalendar()
@@ -410,7 +420,8 @@ def get_equity_analytics():
             weekly_rests[emp_id][iso_week].append(day_idx)
             continue
             
-        if shift_name == "Ferie": continue
+        if shift_name == "Ferie":
+            continue
 
         s_key = get_shift_key(shift_name)
         if s_key:
@@ -420,6 +431,7 @@ def get_equity_analytics():
             else:
                 stats[emp_id]["score"] += pts_weekday.get(s_key, 0)
 
+    # Assegnazione punteggi per pattern
     for emp_id, w_rests in weekly_rests.items():
         for wk, rests in w_rests.items():
             sorted_rests = sorted(rests)
@@ -456,17 +468,20 @@ def generate_schedule(request: ScheduleRequest):
     
     weekends_data = {}
     for emp_id, wk in db_weekends:
-        if wk not in weekends_data: weekends_data[wk] = []
+        if wk not in weekends_data:
+            weekends_data[wk] = []
         weekends_data[wk].append(emp_id)
 
     ferie_data = {}
     for emp_id, wk in db_ferie_raw:
-        if wk not in ferie_data: ferie_data[wk] = []
+        if wk not in ferie_data:
+            ferie_data[wk] = []
         ferie_data[wk].append(emp_id)
 
     richieste_data = {}
     for emp_id, req_date, shift_name in db_richieste_raw:
-        if emp_id not in richieste_data: richieste_data[emp_id] = {}
+        if emp_id not in richieste_data:
+            richieste_data[emp_id] = {}
         shift_id = {"Riposo": 0, "Apertura": 1, "Centrale_1030": 2, "Centrale_1100": 3, "Chiusura_Lunga": 4, "Chiusura_Corta": 5}.get(shift_name, 0)
         richieste_data[emp_id][req_date] = shift_id
 
