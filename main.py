@@ -1,11 +1,14 @@
+import io
 import datetime
 import calendar
 from typing import List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import libsql_experimental as libsql
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from solver import generate_weeks_schedule
 
@@ -102,7 +105,6 @@ class TurnoGenerato(BaseModel):
 class SalvaScheduleRequest(BaseModel):
     schedule: List[TurnoGenerato]
 
-# Rotta principale con supporto GET e HEAD per Render
 @app.get("/")
 @app.head("/")
 async def serve_frontend():
@@ -203,7 +205,157 @@ def get_schedule():
         })
     return {"success": True, "data": schedule}
 
-# --- NUOVA LOGICA ANALYTICS A PUNTEGGIO E GIORNALIERA ---
+# --- ESPORTAZIONE EXCEL ---
+@app.get("/api/export_excel")
+def export_excel(year: int = 2026):
+    conn = get_db_connection()
+    cursor = conn.execute("SELECT date_str, employee_id, shift_name FROM turni_generati ORDER BY date_str, employee_id")
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return {"success": False, "message": "Nessun turno salvato da esportare."}
+
+    schedule_by_week = {}
+    for date_str, emp_id, shift in rows:
+        d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        iso_year, iso_week, _ = d_obj.isocalendar()
+        if year and iso_year != year:
+            continue
+        if iso_week not in schedule_by_week:
+            schedule_by_week[iso_week] = {}
+        if emp_id not in schedule_by_week[iso_week]:
+            schedule_by_week[iso_week][emp_id] = {}
+        schedule_by_week[iso_week][emp_id][date_str] = shift
+
+    if not schedule_by_week:
+        return {"success": False, "message": "Nessun turno salvato trovato per l'anno selezionato."}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"Turni {year}"
+
+    title_font = Font(name="Segoe UI", size=15, bold=True, color="1A2B4C")
+    header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1A2B4C", end_color="1A2B4C", fill_type="solid")
+    week_header_fill = PatternFill(start_color="2C3E50", end_color="2C3E50", fill_type="solid")
+    emp_font = Font(name="Segoe UI", size=11, bold=True)
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center")
+    
+    border_thin = Side(border_style="thin", color="CBD5E1")
+    box_border = Border(left=border_thin, right=border_thin, top=border_thin, bottom=border_thin)
+
+    fill_riposo = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+    font_riposo = Font(name="Segoe UI", size=10, bold=True, color="991B1B")
+
+    fill_ferie = PatternFill(start_color="FEF9C3", end_color="FEF9C3", fill_type="solid")
+    font_ferie = Font(name="Segoe UI", size=10, bold=True, color="854D0E")
+
+    fill_lavoro = PatternFill(start_color="F0FDF4", end_color="F0FDF4", fill_type="solid")
+    font_lavoro = Font(name="Segoe UI", size=10, bold=True, color="166534")
+
+    fill_summary = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+    font_summary = Font(name="Segoe UI", size=9, bold=True, color="475569")
+
+    ws.merge_cells("A1:H1")
+    ws["A1"] = f"Pianificazione Turni Negozio - Anno {year}"
+    ws["A1"].font = title_font
+    ws["A1"].alignment = align_left
+    ws.row_dimensions[1].height = 30
+
+    current_row = 3
+    days_names = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+
+    for iso_wk in sorted(schedule_by_week.keys()):
+        ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=8)
+        cell = ws.cell(row=current_row, column=1, value=f"SETTIMANA ISO {iso_wk}")
+        cell.font = Font(name="Segoe UI", size=12, bold=True, color="FFFFFF")
+        cell.fill = week_header_fill
+        cell.alignment = align_left
+        ws.row_dimensions[current_row].height = 25
+        current_row += 1
+
+        sample_emp = next(iter(schedule_by_week[iso_wk]))
+        week_dates_sorted = sorted(schedule_by_week[iso_wk][sample_emp].keys())
+
+        ws.cell(row=current_row, column=1, value="Dipendente").font = header_font
+        ws.cell(row=current_row, column=1).fill = header_fill
+        ws.cell(row=current_row, column=1).alignment = align_center
+        ws.cell(row=current_row, column=1).border = box_border
+
+        for col_idx, d_str in enumerate(week_dates_sorted, start=2):
+            d_obj = datetime.datetime.strptime(d_str, "%Y-%m-%d").date()
+            day_name = days_names[d_obj.weekday()]
+            c = ws.cell(row=current_row, column=col_idx, value=f"{day_name}\n{d_obj.strftime('%d/%m')}")
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = align_center
+            c.border = box_border
+
+        ws.row_dimensions[current_row].height = 28
+        current_row += 1
+
+        daily_counts = {d_str: {"presenti": 0, "aperture": 0, "chiusure": 0} for d_str in week_dates_sorted}
+
+        for emp_id in range(1, 10):
+            emp_name = EMP_NAMES.get(emp_id, f"Dipendente {emp_id}")
+            c_emp = ws.cell(row=current_row, column=1, value=emp_name)
+            c_emp.font = emp_font
+            c_emp.alignment = align_left
+            c_emp.border = box_border
+
+            for col_idx, d_str in enumerate(week_dates_sorted, start=2):
+                shift = schedule_by_week[iso_wk].get(emp_id, {}).get(d_str, "Riposo")
+                c_shift = ws.cell(row=current_row, column=col_idx, value=shift)
+                c_shift.alignment = align_center
+                c_shift.border = box_border
+
+                if shift == "Riposo":
+                    c_shift.fill = fill_riposo
+                    c_shift.font = font_riposo
+                elif shift == "Ferie":
+                    c_shift.fill = fill_ferie
+                    c_shift.font = font_ferie
+                else:
+                    c_shift.fill = fill_lavoro
+                    c_shift.font = font_lavoro
+                    daily_counts[d_str]["presenti"] += 1
+                    if "09:30" in shift: daily_counts[d_str]["aperture"] += 1
+                    if "21:00" in shift: daily_counts[d_str]["chiusure"] += 1
+
+            ws.row_dimensions[current_row].height = 22
+            current_row += 1
+
+        c_sum_lbl = ws.cell(row=current_row, column=1, value="Copertura Giornaliera")
+        c_sum_lbl.font = font_summary
+        c_sum_lbl.fill = fill_summary
+        c_sum_lbl.alignment = align_left
+        c_sum_lbl.border = box_border
+
+        for col_idx, d_str in enumerate(week_dates_sorted, start=2):
+            cnt = daily_counts[d_str]
+            c_sum = ws.cell(row=current_row, column=col_idx, value=f"{cnt['presenti']} Attivi (AP:{cnt['aperture']} | CH:{cnt['chiusure']})")
+            c_sum.font = font_summary
+            c_sum.fill = fill_summary
+            c_sum.alignment = align_center
+            c_sum.border = box_border
+
+        ws.row_dimensions[current_row].height = 22
+        current_row += 3
+
+    ws.column_dimensions["A"].width = 24
+    for col_letter in ["B", "C", "D", "E", "F", "G", "H"]:
+        ws.column_dimensions[col_letter].width = 22
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    filename = f"Turni_Negozio_{year}.xlsx"
+    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+    return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+
 @app.get("/api/analytics/equity")
 def get_equity_analytics():
     conn = get_db_connection()
@@ -227,13 +379,8 @@ def get_equity_analytics():
         } for emp_id in range(1, 10)
     }
 
-    # Punteggi per Pattern Riposo
     pts_pattern = {"SAB_DOM": 10, "GIO_VEN": 5, "MAR_MER": 4, "LUN_VEN": 3, "LUN_GIO": 1}
-    
-    # Punteggi per Turni Feriali (Lunedì - Venerdì)
     pts_weekday = {"09:30": 10, "10:00": 9, "15:00": 8, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": 1}
-    
-    # Punteggi per Turni Festivi (Sabato e Domenica)
     pts_weekend = {"09:30": 20, "10:00": 9, "15:00": 2, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": -10}
 
     REST_PATTERNS_IDX = {
@@ -251,11 +398,8 @@ def get_equity_analytics():
             if k in s_name: return k
         return None
 
-    # Assegnazione punteggi per ore
     for emp_id, date_str, shift_name in rows:
-        if emp_id not in stats:
-            continue
-
+        if emp_id not in stats: continue
         d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
         day_idx = d_obj.weekday()
         iso_year, iso_week, _ = d_obj.isocalendar()
@@ -266,8 +410,7 @@ def get_equity_analytics():
             weekly_rests[emp_id][iso_week].append(day_idx)
             continue
             
-        if shift_name == "Ferie":
-            continue
+        if shift_name == "Ferie": continue
 
         s_key = get_shift_key(shift_name)
         if s_key:
@@ -277,7 +420,6 @@ def get_equity_analytics():
             else:
                 stats[emp_id]["score"] += pts_weekday.get(s_key, 0)
 
-    # Assegnazione punteggi per pattern
     for emp_id, w_rests in weekly_rests.items():
         for wk, rests in w_rests.items():
             sorted_rests = sorted(rests)
@@ -314,20 +456,17 @@ def generate_schedule(request: ScheduleRequest):
     
     weekends_data = {}
     for emp_id, wk in db_weekends:
-        if wk not in weekends_data:
-            weekends_data[wk] = []
+        if wk not in weekends_data: weekends_data[wk] = []
         weekends_data[wk].append(emp_id)
 
     ferie_data = {}
     for emp_id, wk in db_ferie_raw:
-        if wk not in ferie_data:
-            ferie_data[wk] = []
+        if wk not in ferie_data: ferie_data[wk] = []
         ferie_data[wk].append(emp_id)
 
     richieste_data = {}
     for emp_id, req_date, shift_name in db_richieste_raw:
-        if emp_id not in richieste_data:
-            richieste_data[emp_id] = {}
+        if emp_id not in richieste_data: richieste_data[emp_id] = {}
         shift_id = {"Riposo": 0, "Apertura": 1, "Centrale_1030": 2, "Centrale_1100": 3, "Chiusura_Lunga": 4, "Chiusura_Corta": 5}.get(shift_name, 0)
         richieste_data[emp_id][req_date] = shift_id
 
