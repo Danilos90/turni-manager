@@ -22,6 +22,7 @@
         .panel h3 { margin-top: 0; color: #1a2b4c; font-size: 18px; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; }
         
         .controls { display: flex; gap: 15px; align-items: center; background: #1a2b4c; padding: 15px; border-radius: 8px; color: white; flex-wrap: wrap; }
+        .filter-box { background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 6px; display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.2); }
         select, input, button { padding: 9px 14px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 14px; }
         button { background-color: #f39c12; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background-color: #d68910; }
@@ -88,7 +89,8 @@
     <div id="tab-griglia" class="tab-content active">
         <div class="panel">
             <h3>Generazione & Calcolo</h3>
-            <div class="controls">
+            
+            <div class="controls" style="margin-bottom: 15px;">
                 <div>
                     <label>Anno: </label>
                     <input type="number" id="year" value="2026" min="2024" max="2030" onchange="cambioAnnoMese()" style="width: 80px;">
@@ -105,11 +107,24 @@
                     </select>
                 </div>
                 <button onclick="calcolaTurni()" style="background-color: #27ae60;">🚀 CALCOLA TURNI ORA</button>
-                <button onclick="caricaGrigliaSalvata()" style="background-color: #2980b9;">📂 VEDI TURNI SALVATI</button>
                 <button onclick="esportaExcel()" style="background-color: #16a34a;">🟢 SCARICA EXCEL</button>
-                <button onclick="abilitaModifica()" id="btn-modifica" style="background-color: #8e44ad; display: none;">✏️ ABILITA MODIFICA</button>
-                <button onclick="salvaGriglia()" id="btn-salva" style="background-color: #c0392b; display: none;">💾 SALVA GRIGLIA</button>
             </div>
+            
+            <div class="controls" style="background-color: #2c3e50;">
+                <div class="filter-box">
+                    <label style="font-size: 13px; font-weight: bold; color: #f39c12;">Vedi Turni Salvati (Filtro Date):</label>
+                    <input type="date" id="filter-start" title="Data di inizio">
+                    <span style="color: #cbd5e1;">-</span>
+                    <input type="date" id="filter-end" title="Data di fine">
+                </div>
+                <button onclick="caricaGrigliaSalvata()" style="background-color: #2980b9;">📂 MOSTRA TURNI</button>
+                
+                <div style="flex-grow: 1; display: flex; justify-content: flex-end; gap: 10px;">
+                    <button onclick="abilitaModifica()" id="btn-modifica" style="background-color: #8e44ad; display: none;">✏️ ABILITA MODIFICA</button>
+                    <button onclick="salvaGriglia()" id="btn-salva" style="background-color: #c0392b; display: none;">💾 SALVA GRIGLIA</button>
+                </div>
+            </div>
+
             <div class="checkbox-group" id="checkbox-group"></div>
         </div>
         <div id="loading" class="loading">Elaborazione in corso... ⏳</div>
@@ -420,9 +435,27 @@
     }
 
     async function caricaGrigliaSalvata() {
-        document.getElementById('loading').style.display = 'block'; document.getElementById('results').innerHTML = ''; document.getElementById('btn-modifica').style.display = 'none'; document.getElementById('btn-salva').style.display = 'none';
+        const startDate = document.getElementById('filter-start').value;
+        const endDate = document.getElementById('filter-end').value;
+
+        let queryParams = [];
+        if (startDate) queryParams.push(`start_date=${startDate}`);
+        if (endDate) queryParams.push(`end_date=${endDate}`);
+        
+        let url = '/api/get_schedule';
+        if (queryParams.length > 0) {
+            url += '?' + queryParams.join('&');
+        }
+
+        document.getElementById('loading').style.display = 'block'; 
+        document.getElementById('results').innerHTML = ''; 
+        document.getElementById('btn-modifica').style.display = 'none'; 
+        document.getElementById('btn-salva').style.display = 'none';
+        
         try {
-            const response = await fetch('/api/get_schedule'); const result = await response.json(); document.getElementById('loading').style.display = 'none';
+            const response = await fetch(url); 
+            const result = await response.json(); 
+            document.getElementById('loading').style.display = 'none';
             if (result.success && result.data.length > 0) {
                 const tutteLeDate = [...new Set(result.data.map(item => item.date))].sort(); let target_weeks = new Set();
                 tutteLeDate.forEach(dStr => {
@@ -430,9 +463,17 @@
                     let firstThursday = target.getTime(); target.setMonth(0, 1); if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
                     target_weeks.add(1 + Math.ceil((firstThursday - target.getTime()) / 604800000));
                 });
-                renderTable(result.data, Array.from(target_weeks).sort((a,b)=>a-b)); document.getElementById('btn-modifica').style.display = 'inline-block'; setUnsavedStatus(false); showToast("Griglia salvata caricata con successo", "info");
-            } else { showToast("Nessun turno salvato nel database", "info"); }
-        } catch (error) { document.getElementById('loading').style.display = 'none'; showToast("Errore nel caricamento dei dati", "error"); }
+                renderTable(result.data, Array.from(target_weeks).sort((a,b)=>a-b)); 
+                document.getElementById('btn-modifica').style.display = 'inline-block'; 
+                setUnsavedStatus(false); 
+                showToast("Griglia salvata caricata con successo", "info");
+            } else { 
+                showToast("Nessun turno trovato per le date selezionate", "info"); 
+            }
+        } catch (error) { 
+            document.getElementById('loading').style.display = 'none'; 
+            showToast("Errore nel caricamento dei dati", "error"); 
+        }
     }
 
     function setUnsavedStatus(unsaved) {
@@ -464,6 +505,7 @@
         const orari = {}; data.forEach(item => { if(!orari[item.employee_id]) orari[item.employee_id] = {}; orari[item.employee_id][item.date] = item.shift; });
         const tutteLeDate = [...new Set(data.map(item => item.date))].sort();
 
+        // Organizza le date a blocchi di 7 per visualizzarle a settimane intere
         for (let i = 0; i < tutteLeDate.length; i += 7) {
             const giorniSettimana = tutteLeDate.slice(i, i + 7); let currentIsoWeek = "Sconosciuta";
             if (giorniSettimana.length > 0) {
@@ -475,7 +517,12 @@
             const weekHeader = document.createElement('div'); weekHeader.className = 'week-header'; weekHeader.innerHTML = `<span>Settimana ISO ${currentIsoWeek}</span> <span class="badge-status saved">Salvato nel DB</span>`; resultsDiv.appendChild(weekHeader);
             let tableHTML = `<table class="grid-table"><thead><tr><th style="width: 15%;">Dipendente</th>`;
             const nomiGiorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
-            giorniSettimana.forEach((dataStr, index) => { const dFormat = parseLocalDate(dataStr).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }); tableHTML += `<th style="width: 12.1%;">${nomiGiorni[index]}<br><small>${dFormat}</small></th>`; });
+            giorniSettimana.forEach((dataStr) => { 
+                let dObj = parseLocalDate(dataStr);
+                let dayIndex = (dObj.getDay() + 6) % 7;
+                const dFormat = dObj.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }); 
+                tableHTML += `<th style="width: 12.1%;">${nomiGiorni[dayIndex]}<br><small>${dFormat}</small></th>`; 
+            });
             tableHTML += `</tr></thead><tbody>`;
 
             for (let empId = 1; empId <= 9; empId++) {
