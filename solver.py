@@ -474,3 +474,4 @@ def generate_weeks_schedule(year: int, target_weeks: list, db_weekends=None, db_
                     break
 
     return full_schedule
+    
