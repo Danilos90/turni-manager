@@ -33,7 +33,7 @@
         .db-list { display: flex; gap: 20px; flex-wrap: wrap; }
         .db-column { flex: 1; min-width: 300px; background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1; min-height: 100px; }
         .db-column h4 { margin: 0 0 10px 0; color: #d35400; text-align: center; }
-        .db-item { background: #fdf2e9; padding: 6px 12px; border-radius: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; font-size: 14px; border: 1px solid #fad7a1; }
+        .db-item { background: #fdf2e9; padding: 6px 12px; border-radius: 4px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; border: 1px solid #fad7a1; }
         .btn-remove { background: #e74c3c; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 12px; }
         .btn-remove:hover { background: #c0392b; }
 
@@ -140,16 +140,27 @@
                 </div>
             </div>
         </div>
+
         <div class="panel">
             <h3>Richieste Specifiche</h3>
             <div class="db-form">
                 <input type="date" id="req-date">
                 <select id="req-dipendente"></select>
                 <select id="req-turno">
-                    <option value="Riposo">Giorno di Riposo</option><option value="Apertura">Apertura (09:30)</option>
-                    <option value="Chiusura_Lunga">Chiusura (12:00-21:00)</option><option value="Chiusura_Corta">Chiusura (15:00-21:00)</option>
+                    <option value="Riposo">Giorno di Riposo</option>
+                    <option value="Apertura">Apertura (09:30 - 18:30)</option>
+                    <option value="Centrale_1000">Centrale (10:00 - 19:00)</option>
+                    <option value="Centrale_1030">Centrale (10:30 - 19:30)</option>
+                    <option value="Centrale_1100">Centrale (11:00 - 20:00)</option>
+                    <option value="Centrale_1130">Centrale (11:30 - 20:30)</option>
+                    <option value="Chiusura_Lunga">Chiusura Lunga (12:00 - 21:00)</option>
+                    <option value="Chiusura_Corta">Chiusura Corta (15:00 - 21:00)</option>
                 </select>
                 <button type="button" onclick="aggiungiRichiesta()">Salva Richiesta</button>
+            </div>
+            <div class="db-column" style="margin-top: 15px;">
+                <h4>Elenco Richieste Specifiche Salvate</h4>
+                <div id="lista-richieste">Caricamento in corso...</div>
             </div>
         </div>
     </div>
@@ -197,6 +208,7 @@
 
     let db_weekends = {}; 
     let db_ferie = {}; 
+    let db_richieste_list = [];
     let chartInstances = {};
 
     document.addEventListener("DOMContentLoaded", function() {
@@ -243,9 +255,14 @@
             const resW = await fetch(`/api/weekends?year=${year}`); const jsonW = await resW.json();
             db_weekends = {};
             if(jsonW.success) jsonW.data.forEach(item => { if(!db_weekends[item.iso_week]) db_weekends[item.iso_week] = []; db_weekends[item.iso_week].push(item.employee_id); });
+            
             const resF = await fetch(`/api/ferie?year=${year}`); const jsonF = await resF.json();
             db_ferie = {};
             if(jsonF.success) jsonF.data.forEach(item => { if(!db_ferie[item.iso_week]) db_ferie[item.iso_week] = []; db_ferie[item.iso_week].push(item.employee_id); });
+
+            const resR = await fetch('/api/richieste'); const jsonR = await resR.json();
+            db_richieste_list = jsonR.success ? jsonR.data : [];
+
             aggiornaVisualizzazioneDB();
         } catch (error) { showToast("Errore lettura DB", "error"); }
     }
@@ -265,7 +282,31 @@
         const empId = parseInt(document.getElementById('req-dipendente').value);
         const turnoVal = document.getElementById('req-turno').value;
         if(!dateVal) return showToast("Seleziona una data per la richiesta", "error");
-        try { await fetch('/api/richieste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ employee_id: empId, req_date: dateVal, shift_name: turnoVal }) }); showToast("Richiesta salvata con successo", "success"); } catch (error) { showToast("Errore nel salvataggio della richiesta", "error"); }
+        try { 
+            await fetch('/api/richieste', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ employee_id: empId, req_date: dateVal, shift_name: turnoVal }) 
+            }); 
+            showToast("Richiesta salvata con successo", "success"); 
+            caricaDatabaseDalServer();
+        } catch (error) { 
+            showToast("Errore nel salvataggio della richiesta", "error"); 
+        }
+    }
+
+    async function rimuoviRichiesta(empId, reqDate) {
+        try {
+            await fetch('/api/richieste', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employee_id: empId, req_date: reqDate })
+            });
+            showToast("Richiesta rimossa", "info");
+            caricaDatabaseDalServer();
+        } catch (error) {
+            showToast("Errore durante l'eliminazione", "error");
+        }
     }
 
     async function rimuoviDalDB(tipo, week, empId) {
@@ -280,7 +321,38 @@
             Object.keys(db).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(week => { db[week].forEach(empId => { hasItems = true; container.innerHTML += `<div class="db-item"><span><strong>Sett. ${week}:</strong> ${dipendenti[empId]}</span><button class="btn-remove" onclick="rimuoviDalDB('${tipo}', ${week}, ${empId})">X</button></div>`; }); });
             if(!hasItems) container.innerHTML = '<span style="color: #94a3b8;">Nessuna regola inserita.</span>';
         };
-        renderList(db_weekends, 'lista-weekend', 'weekend'); renderList(db_ferie, 'lista-ferie', 'ferie');
+        renderList(db_weekends, 'lista-weekend', 'weekend'); 
+        renderList(db_ferie, 'lista-ferie', 'ferie');
+
+        // Render Elenco Richieste
+        const reqContainer = document.getElementById('lista-richieste');
+        if (reqContainer) {
+            reqContainer.innerHTML = '';
+            if (db_richieste_list.length === 0) {
+                reqContainer.innerHTML = '<span style="color: #94a3b8;">Nessuna richiesta specifica inserita.</span>';
+            } else {
+                const shiftLabels = {
+                    "Riposo": "Riposo",
+                    "Apertura": "Apertura (09:30)",
+                    "Centrale_1000": "Centrale (10:00)",
+                    "Centrale_1030": "Centrale (10:30)",
+                    "Centrale_1100": "Centrale (11:00)",
+                    "Centrale_1130": "Centrale (11:30)",
+                    "Chiusura_Lunga": "Chiusura Lunga (12:00-21:00)",
+                    "Chiusura_Corta": "Chiusura Corta (15:00-21:00)"
+                };
+                db_richieste_list.forEach(item => {
+                    const parts = item.req_date.split('-');
+                    const formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    const sLabel = shiftLabels[item.shift_name] || item.shift_name;
+                    const div = document.createElement('div');
+                    div.className = 'db-item';
+                    div.innerHTML = `<span><strong>${formattedDate}</strong> — ${dipendenti[item.employee_id]}: <em style="color:#d35400; font-weight:bold;">${sLabel}</em></span>
+                                     <button class="btn-remove" onclick="rimuoviRichiesta(${item.employee_id}, '${item.req_date}')">X</button>`;
+                    reqContainer.appendChild(div);
+                });
+            }
+        }
     }
 
     function parseLocalDate(dateStr) { const parts = dateStr.split('-'); return new Date(parts[0], parts[1] - 1, parts[2]); }
