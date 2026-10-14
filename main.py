@@ -1,7 +1,7 @@
 import io
 import datetime
 import calendar
-from typing import List
+from typing import List, Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -207,9 +207,23 @@ def save_schedule(req: SalvaScheduleRequest):
     return {"success": True, "message": "Griglia salvata nel database permanente!"}
 
 @app.get("/api/get_schedule")
-def get_schedule():
+def get_schedule(start_date: Optional[str] = None, end_date: Optional[str] = None):
     conn = get_db_connection()
-    cursor = conn.execute("SELECT date_str, employee_id, shift_name FROM turni_generati")
+    
+    query = "SELECT date_str, employee_id, shift_name FROM turni_generati"
+    params = []
+    
+    if start_date and end_date:
+        query += " WHERE date_str >= ? AND date_str <= ?"
+        params.extend([start_date, end_date])
+    elif start_date:
+        query += " WHERE date_str >= ?"
+        params.append(start_date)
+    elif end_date:
+        query += " WHERE date_str <= ?"
+        params.append(end_date)
+        
+    cursor = conn.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
     
@@ -483,7 +497,7 @@ def generate_schedule(request: ScheduleRequest):
         if wk not in ferie_data: ferie_data[wk] = []
         ferie_data[wk].append(emp_id)
 
-    # Mappatura completa di tutti i turni selezionabili
+    # Mappatura completa di tutti i turni selezionabili (incluse le Ferie come richiesta singola)
     shift_map = {
         "Riposo": 0,
         "Apertura": 1,
@@ -491,6 +505,7 @@ def generate_schedule(request: ScheduleRequest):
         "Centrale_1100": 3,
         "Chiusura_Lunga": 4,
         "Chiusura_Corta": 5,
+        "Ferie": 7,
         "Centrale_1000": 8,
         "Centrale_1130": 9
     }
@@ -519,4 +534,3 @@ def generate_schedule(request: ScheduleRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-    
