@@ -97,6 +97,10 @@ class RichiestaRequest(BaseModel):
     req_date: str
     shift_name: str
 
+class RichiestaDeleteRequest(BaseModel):
+    employee_id: int
+    req_date: str
+
 class TurnoGenerato(BaseModel):
     date: str
     employee_id: int
@@ -111,6 +115,7 @@ class SalvaScheduleRequest(BaseModel):
 async def serve_frontend():
     return FileResponse("index.html")
 
+# --- API WEEKEND ---
 @app.post("/api/weekends")
 def add_weekend(req: AdminRequest):
     conn = get_db_connection()
@@ -136,6 +141,7 @@ def get_weekends(year: int):
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "iso_week": r[1]} for r in rows]}
 
+# --- API FERIE ---
 @app.post("/api/ferie")
 def add_ferie(req: AdminRequest):
     conn = get_db_connection()
@@ -161,6 +167,7 @@ def get_ferie(year: int):
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "iso_week": r[1]} for r in rows]}
 
+# --- API RICHIESTE SPECIFICHE ---
 @app.post("/api/richieste")
 def add_richiesta(req: RichiestaRequest):
     conn = get_db_connection()
@@ -170,14 +177,23 @@ def add_richiesta(req: RichiestaRequest):
     conn.close()
     return {"success": True}
 
+@app.delete("/api/richieste")
+def delete_richiesta(req: RichiestaDeleteRequest):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM richieste WHERE employee_id=? AND req_date=?", (req.employee_id, req.req_date))
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
 @app.get("/api/richieste")
 def get_richieste():
     conn = get_db_connection()
-    cursor = conn.execute("SELECT employee_id, req_date, shift_name FROM richieste")
+    cursor = conn.execute("SELECT employee_id, req_date, shift_name FROM richieste ORDER BY req_date ASC")
     rows = cursor.fetchall()
     conn.close()
     return {"success": True, "data": [{"employee_id": r[0], "req_date": r[1], "shift_name": r[2]} for r in rows]}
 
+# --- API SALVATAGGIO GRIGLIA ---
 @app.post("/api/save_schedule")
 def save_schedule(req: SalvaScheduleRequest):
     conn = get_db_connection()
@@ -206,7 +222,7 @@ def get_schedule():
         })
     return {"success": True, "data": schedule}
 
-# --- NUOVA ROTTA: ESPORTAZIONE EXCEL ---
+# --- ESPORTAZIONE EXCEL ---
 @app.get("/api/export_excel")
 def export_excel(year: int = 2026):
     conn = get_db_connection()
@@ -357,7 +373,7 @@ def export_excel(year: int = 2026):
     headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
 
-# --- LOGICA ANALYTICS A PUNTEGGIO E GIORNALIERA ---
+# --- ANALYTICS EQUITÀ ---
 @app.get("/api/analytics/equity")
 def get_equity_analytics():
     conn = get_db_connection()
@@ -381,13 +397,8 @@ def get_equity_analytics():
         } for emp_id in range(1, 10)
     }
 
-    # Punteggi per Pattern Riposo
     pts_pattern = {"SAB_DOM": 10, "GIO_VEN": 5, "MAR_MER": 4, "LUN_VEN": 3, "LUN_GIO": 1}
-    
-    # Punteggi per Turni Feriali (Lunedì - Venerdì)
     pts_weekday = {"09:30": 10, "10:00": 9, "15:00": 8, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": 1}
-    
-    # Punteggi per Turni Festivi (Sabato e Domenica)
     pts_weekend = {"09:30": 20, "10:00": 9, "15:00": 2, "10:30": 6, "11:00": 5, "11:30": 2, "12:00": -10}
 
     REST_PATTERNS_IDX = {
@@ -405,11 +416,8 @@ def get_equity_analytics():
             if k in s_name: return k
         return None
 
-    # Assegnazione punteggi per ore
     for emp_id, date_str, shift_name in rows:
-        if emp_id not in stats:
-            continue
-
+        if emp_id not in stats: continue
         d_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
         day_idx = d_obj.weekday()
         iso_year, iso_week, _ = d_obj.isocalendar()
@@ -420,8 +428,7 @@ def get_equity_analytics():
             weekly_rests[emp_id][iso_week].append(day_idx)
             continue
             
-        if shift_name == "Ferie":
-            continue
+        if shift_name == "Ferie": continue
 
         s_key = get_shift_key(shift_name)
         if s_key:
@@ -431,7 +438,6 @@ def get_equity_analytics():
             else:
                 stats[emp_id]["score"] += pts_weekday.get(s_key, 0)
 
-    # Assegnazione punteggi per pattern
     for emp_id, w_rests in weekly_rests.items():
         for wk, rests in w_rests.items():
             sorted_rests = sorted(rests)
@@ -448,6 +454,7 @@ def get_equity_analytics():
         "data": list(stats.values())
     }
 
+# --- GENERAZIONE TURNI ---
 @app.post("/generate")
 def generate_schedule(request: ScheduleRequest):
     conn = get_db_connection()
@@ -468,22 +475,30 @@ def generate_schedule(request: ScheduleRequest):
     
     weekends_data = {}
     for emp_id, wk in db_weekends:
-        if wk not in weekends_data:
-            weekends_data[wk] = []
+        if wk not in weekends_data: weekends_data[wk] = []
         weekends_data[wk].append(emp_id)
 
     ferie_data = {}
     for emp_id, wk in db_ferie_raw:
-        if wk not in ferie_data:
-            ferie_data[wk] = []
+        if wk not in ferie_data: ferie_data[wk] = []
         ferie_data[wk].append(emp_id)
+
+    # Mappatura completa di tutti i turni selezionabili
+    shift_map = {
+        "Riposo": 0,
+        "Apertura": 1,
+        "Centrale_1030": 2,
+        "Centrale_1100": 3,
+        "Chiusura_Lunga": 4,
+        "Chiusura_Corta": 5,
+        "Centrale_1000": 8,
+        "Centrale_1130": 9
+    }
 
     richieste_data = {}
     for emp_id, req_date, shift_name in db_richieste_raw:
-        if emp_id not in richieste_data:
-            richieste_data[emp_id] = {}
-        shift_id = {"Riposo": 0, "Apertura": 1, "Centrale_1030": 2, "Centrale_1100": 3, "Chiusura_Lunga": 4, "Chiusura_Corta": 5}.get(shift_name, 0)
-        richieste_data[emp_id][req_date] = shift_id
+        if emp_id not in richieste_data: richieste_data[emp_id] = {}
+        richieste_data[emp_id][req_date] = shift_map.get(shift_name, 0)
 
     saved_schedule = [{"date": r[0], "employee_id": r[1], "shift": r[2]} for r in db_saved_raw]
 
